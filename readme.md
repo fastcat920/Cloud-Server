@@ -2,31 +2,55 @@
 
 独立的自托管云资源工作台。原生 PHP + 浏览器 JavaScript，代码和 UI 全新编写，不再包含 Laravel、React、V2Board、Composer 或 Node.js 运行依赖。无数据库，根目录直接运行。
 
-## Git 部署到宝塔
+## 在网站当前目录部署与更新
+
+**网站目录就是项目根目录。在哪个目录部署，后续命令就在同一目录执行，不增加 cloud-desk 子目录。**
+
+例如网站目录为 `/www/wwwroot/cloud.fastcat.lol`。
+
+### 首次安装：当前目录为空
+
+在宝塔网站终端进入该目录，直接克隆到 `.`：
 
 ```sh
-cd /www/wwwroot
-git clone https://github.com/fastcat920/Cloud-Server.git cloud-desk
+cd /www/wwwroot/cloud.fastcat.lol
+git clone https://github.com/fastcat920/Cloud-Server.git .
+bash update.sh
 ```
 
-宝塔创建或修改网站：
+最后一个点表示当前目录。若目录已有宝塔生成的默认页面，请先自行备份并移走，Git 不会克隆到非空目录。
 
-1. 网站目录选 `/www/wwwroot/cloud-desk`，运行目录保持默认 `/`。
-2. PHP 选择 **8.2 或以上**。伪静态留空，不需要填写规则。若沿用旧网站，请先删除旧的重写规则。
-3. 宝塔文件管理中把项目所有者设为网站用户（通常 `www`），以便首次自动创建数据目录；启用 HTTPS。
-4. 打开域名，在网页创建管理员账号。以后直接进入登录界面。
+宝塔网站目录保持 `/www/wwwroot/cloud.fastcat.lol`，运行目录保持 `/`，PHP 选择 **8.2 或以上**，伪静态留空，启用 HTTPS。打开域名创建管理员，不需要安装 Composer、Node.js、数据库或构建前端。
 
-程序使用 PHP 的 OpenSSL 和 curl。对象存储需要 SimpleXML，Ed25519 签名模式额外需要 sodium；页面会提示缺失扩展。无需 Composer、Node.js、数据库、Redis、构建命令、定时任务或常驻进程。
+脚本由 root 执行且存在 www 用户时，只把 `_core/data` 数据目录交给 www，不会把整个代码仓库改为 www 所有。其他网站运行用户请自行调整该数据目录的所有者。
 
-### 日常更新
+### 已经通过解压包装好了原生 v2，但没有 .git
 
-在项目目录执行：
+无需换网站目录。在**当前网站目录**执行一次：
 
 ```sh
-git pull --ff-only origin main
+cd /www/wwwroot/cloud.fastcat.lol
+curl -fsSL https://raw.githubusercontent.com/fastcat920/Cloud-Server/main/update.sh -o update.sh && bash update.sh
 ```
 
-数据保存在 Git 忽略的 `_core/data/`，更新代码不会覆盖账号和凭证。请不要使用 `git clean -fdx`，它会删除被忽略的本地数据。更新前可在「设置」下载备份。
+脚本会识别原生 v2，先把现有网站备份到网站目录之外，再在当前目录补齐 Git 仓库和代码。`_core/data` 内的账号、密钥、配置与历史记录保持不变。临时克隆发生在系统临时目录，结束后清理，不会在网站内增加一层项目目录。
+
+此方式**不用于旧版 \_app / Laravel 结构**或其他网站；检测到这些目录时停止，不会覆盖。v1 数据仍通过「从 v1 迁移」的导入流程处理。
+
+### 以后更新：仍在原来的目录
+
+```sh
+cd /www/wwwroot/cloud.fastcat.lol
+bash update.sh
+```
+
+脚本检查远端、分支和本地代码修改，获取最新代码，升级前备份，然后只做快进更新。出现本地修改、历史分叉、仓库不匹配或下载失败时停止，不会强制重置。已是最新版时不会重复备份。
+
+也可以继续在该目录执行 `git pull --ff-only origin main`，但该命令本身不会自动备份。不要执行 `git clean -fdx`，它会删除被忽略的数据目录。
+
+备份位于网站父目录的 `.cloud-desk-backups/`，目录权限 0700、归档权限 0600。备份包含数据和密钥，应妥善保管；脚本不会自动删除旧备份。
+
+程序使用 OpenSSL 和 curl；对象存储需要 SimpleXML，Ed25519 模式需要 sodium。无需 Redis、定时任务或常驻进程。
 
 ## 功能
 

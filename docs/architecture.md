@@ -17,3 +17,7 @@ New interfaces use a restrained teal / off-white palette, reusable panel/table/f
 ## Client configuration plans
 
 Plans bind client version labels, default template IDs and independent publish targets. Templates are immutable; each revision stores its own schema snapshot. Existing data is migrated idempotently at overview/save entry. Draft updates reuse the draft, while edits of a released revision create a child draft. Publishing validates plan ownership and endpoint collisions, and archives only within the same plan. Schema-driven UI preserves unknown keys and missing optional fields; upgrade defaults and deletions are explicit and previewed. JSON Schema support is deliberately limited to the documented subset.
+
+## In-place deployment
+
+`update.sh` always uses the current working directory as the website root. Fresh installation stages a Git clone outside the website, then installs its contents including `.git` at the root. Native ZIP adoption first archives the original site outside its document root and leaves ignored runtime state untouched. Existing checkouts require the expected origin, main branch, a clean tracked tree and fast-forward ancestry. Updates archive the site before merging, never reset local changes, and prepare only the private data directory for the web user. Legacy `_app` layouts and unrelated nonempty directories are deliberately refused.

@@ -143,7 +143,7 @@ final class Api
             }
             $authenticated = isset($state['admin'],$_SESSION['auth']) && hash_equals((string)($state['admin']['epoch'] ?? ''), (string)$_SESSION['auth']) && ($_SESSION['expires'] ?? 0) > time();
             if ($action === 'boot') {
-                $this->respond(['installed' => isset($state['admin']),'authenticated' => $authenticated,'csrf' => $csrf,'email' => $authenticated ? $state['admin']['email'] : null,'version' => '2.1.0','environment' => ['php' => PHP_VERSION,'missing' => array_values(array_filter(['openssl','curl','simplexml'], fn ($e) => !extension_loaded($e)))]]);
+                $this->respond(['installed' => isset($state['admin']),'authenticated' => $authenticated,'csrf' => $csrf,'email' => $authenticated ? $state['admin']['email'] : null,'version' => '2.1.1','environment' => ['php' => PHP_VERSION,'missing' => array_values(array_filter(['openssl','curl','simplexml'], fn ($e) => !extension_loaded($e)))]]);
             }
             if ($action === 'setup') {
                 $this->limited('setup', 10, 600);

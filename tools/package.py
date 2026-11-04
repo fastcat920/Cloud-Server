@@ -5,7 +5,7 @@ import hashlib
 root=Path(__file__).resolve().parents[1];out=root/'dist';out.mkdir(exist_ok=True)
 path=out/'cloud-desk-v2.zip'
 with ZipFile(path,'w',ZIP_DEFLATED) as archive:
- for name in ['index.php','readme.md','LICENSE','.htaccess','.gitignore']:archive.write(root/name,name)
+ for name in ['index.php','readme.md','LICENSE','.htaccess','.gitignore','update.sh']:archive.write(root/name,name)
  for folder in ['_core','assets']:
   for file in (root/folder).rglob('*'):
    if file.is_file() and 'data' not in file.relative_to(root).parts:archive.write(file,file.relative_to(root))

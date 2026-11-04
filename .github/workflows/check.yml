@@ -15,3 +15,5 @@ jobs:
         run: php tests/unit.php
       - name: Isolated HTTP integration tests
         run: PHP_BINARY=php python3 tests/integration.py
+      - name: Same-directory deployment and update tests
+        run: python3 tests/deployment.py
