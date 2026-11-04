@@ -1,0 +1,17 @@
+name: Check
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check PHP syntax
+        run: find _core tests -name '*.php' ! -name view.php -print0 | xargs -0 -n1 php -l && php -l index.php
+      - name: Check JavaScript syntax
+        run: node --check assets/app.js && node --check assets/ui.js
+      - name: Native unit tests
+        run: php tests/unit.php
+      - name: Isolated HTTP integration tests
+        run: PHP_BINARY=php python3 tests/integration.py

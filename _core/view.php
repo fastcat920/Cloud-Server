@@ -1,0 +1,2 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>Cloud Desk · 云资源工作台</title><link rel="stylesheet" href="assets/app.css"><script type="module" src="assets/app.js"></script></head><body><div id="app"><div class="boot"><span class="brand-mark">C</span><p>正在打开工作台…</p></div></div><div id="toasts" role="status" aria-live="polite"></div><dialog id="dialog" aria-labelledby="dialog-title"></dialog></body></html>

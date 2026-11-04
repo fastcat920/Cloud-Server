@@ -1,1 +1,0 @@
-@include('mail.shared.couponReceived')
