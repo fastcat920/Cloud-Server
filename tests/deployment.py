@@ -40,4 +40,8 @@ with tempfile.TemporaryDirectory(prefix='cloud-deployment-') as directory:
  shutil.copy(project/'update.sh',origin/'update.sh');run(['git','add','update.sh'],origin);run(['git','commit','-m','introduce updater'],origin)
  run(['bash','update.sh'],old_git,env)
  assert run(['git','ls-files','update.sh'],old_git).stdout.strip()=='update.sh'
+ pure_git=root/'pure-git.example.com';pure_git.mkdir();shutil.copytree(archive_site/'_core',pure_git/'_core');(pure_git/'index.php').write_text('native zip')
+ run(['git','init','-b','main'],pure_git);run(['git','remote','add','origin',str(origin)],pure_git);run(['git','fetch','origin','main'],pure_git)
+ run(['git','reset','--mixed','origin/main'],pure_git);run(['git','restore','--source=origin/main','--worktree','.'],pure_git);run(['git','branch','--set-upstream-to=origin/main','main'],pure_git)
+ assert (pure_git/'_core/data/state.php').read_text()=='persistent-state' and 'v2' in (pure_git/'index.php').read_text()
  print('PASS: current-directory install, readable source, fast-forward update, data/key preservation, backup, local edit refusal, ZIP-to-Git adoption, unrelated/legacy directory protection')

@@ -23,6 +23,23 @@ git clone https://github.com/fastcat920/Cloud-Server.git .
 
 宝塔中需允许网站运行用户写入 `_core/data`（不存在时先创建），代码和 `.git` 可由执行 Git 的部署用户持有，无需把整个仓库交给 www。若使用 root 部署且网站运行用户是 www，可执行 `mkdir -p _core/data`、`chown www:www _core/data`、`chmod 700 _core/data`；只调整数据目录。
 
+### 原生 v2 解压版：只用 Git 接入当前目录
+
+仅适用于已有 `_core/Store.php` 的原生 v2，且当前没有 `.git`。请先从设置下载完整备份。这一步会把程序文件对齐主分支，保留被忽略的 `_core/data`；本地自定义代码请另外备份。**不要用于旧 `_app` 架构或已经存在 Git 仓库的目录。**
+
+就在现有网站目录执行：
+
+```sh
+git init -b main
+git remote add origin https://github.com/fastcat920/Cloud-Server.git
+git fetch origin main
+git reset --mixed origin/main
+git restore --source=origin/main --worktree .
+git branch --set-upstream-to=origin/main main
+```
+
+以后不需要重复初始化，仍在该目录执行 `git pull --ff-only origin main` 即可。Git 软件已安装和当前目录已是 Git 仓库是两个条件；解压包不会携带 `.git`。
+
 ### 已经通过解压包装好了原生 v2，但没有 .git（可选迁移工具）
 
 无需换网站目录。在**当前网站目录**执行一次：
