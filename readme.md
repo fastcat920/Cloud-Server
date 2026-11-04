@@ -15,16 +15,15 @@
 ```sh
 cd /www/wwwroot/cloud.fastcat.lol
 git clone https://github.com/fastcat920/Cloud-Server.git .
-bash update.sh
 ```
 
 最后一个点表示当前目录。若目录已有宝塔生成的默认页面，请先自行备份并移走，Git 不会克隆到非空目录。
 
 宝塔网站目录保持 `/www/wwwroot/cloud.fastcat.lol`，运行目录保持 `/`，PHP 选择 **8.2 或以上**，伪静态留空，启用 HTTPS。打开域名创建管理员，不需要安装 Composer、Node.js、数据库或构建前端。
 
-脚本由 root 执行且存在 www 用户时，只把 `_core/data` 数据目录交给 www，不会把整个代码仓库改为 www 所有。其他网站运行用户请自行调整该数据目录的所有者。
+宝塔中需允许网站运行用户写入 `_core/data`（不存在时先创建），代码和 `.git` 可由执行 Git 的部署用户持有，无需把整个仓库交给 www。若使用 root 部署且网站运行用户是 www，可执行 `mkdir -p _core/data`、`chown www:www _core/data`、`chmod 700 _core/data`；只调整数据目录。
 
-### 已经通过解压包装好了原生 v2，但没有 .git
+### 已经通过解压包装好了原生 v2，但没有 .git（可选迁移工具）
 
 无需换网站目录。在**当前网站目录**执行一次：
 
@@ -41,12 +40,14 @@ curl -fsSL https://raw.githubusercontent.com/fastcat920/Cloud-Server/main/update
 
 ```sh
 cd /www/wwwroot/cloud.fastcat.lol
-bash update.sh
+git pull --ff-only origin main
 ```
 
-脚本检查远端、分支和本地代码修改，获取最新代码，升级前备份，然后只做快进更新。出现本地修改、历史分叉、仓库不匹配或下载失败时停止，不会强制重置。已是最新版时不会重复备份。
+请先从设置下载备份。Git 仅更新代码，不会覆盖忽略的 `_core/data`。此命令仅适用于首次通过 Git 克隆、或已接入 Git 的目录。
 
-也可以继续在该目录执行 `git pull --ff-only origin main`，但该命令本身不会自动备份。不要执行 `git clean -fdx`，它会删除被忽略的数据目录。
+如果希望升级前自动备份，可选执行 `bash update.sh`。脚本检查远端、分支和本地代码修改，获取最新代码，升级前备份，然后只做快进更新。出现本地修改、历史分叉、仓库不匹配或下载失败时停止，不会强制重置。已是最新版时不会重复备份。
+
+原生 `git pull` 不会自动备份。不要执行 `git clean -fdx`，它会删除被忽略的数据目录。
 
 备份位于网站父目录的 `.cloud-desk-backups/`，目录权限 0700、归档权限 0600。备份包含数据和密钥，应妥善保管；脚本不会自动删除旧备份。
 
