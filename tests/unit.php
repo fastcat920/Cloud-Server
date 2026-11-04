@@ -1,7 +1,7 @@
 <?php
 
 declare(strict_types=1);
-foreach (['Store','Security','Cloud','Objects','Configs','Importer'] as $file) {
+foreach (['Store','Security','Cloud','Objects','Configs','Plans','Importer'] as $file) {
     require __DIR__.'/../_core/'.$file.'.php';
 }
 use CloudDesk\{Store,Security,Cloud,Http,Objects,Configs,Importer};
@@ -133,6 +133,15 @@ try {
         $encoded = json_decode($configs->encode($version, $settings), true);
         verify($encoded['_format'] === 'fastcat-config-v2' && sodium_crypto_sign_verify_detached(base64_decode($encoded['signature']), $encoded['payload'], sodium_crypto_sign_publickey($pair)), 'Signed config compatibility');
     }
+    \CloudDesk\Plans::checkSchema(['type' => 'object','properties' => ['enabled' => ['type' => 'boolean','enum' => [true,false]]]]);
+    \CloudDesk\Plans::validate(['enabled' => true,'unknown' => 'preserved'], ['type' => 'object','properties' => ['enabled' => ['type' => 'boolean']],'additionalProperties' => true]);
+    try {
+        \CloudDesk\Plans::validate('中', ['type' => 'string','minLength' => 2]);
+        throw new LogicException('Unicode length accepted');
+    } catch (RuntimeException $expected) {
+    }
+    verify(Configs::canonical(Configs::materialize(['options' => []], ['type' => 'object','properties' => ['options' => ['type' => 'object','properties' => []]]])) === "{\n    \"options\": {}\n}", 'Empty object retains schema type');
+    verify(\CloudDesk\Plans::diff(['old' => 1], ['new' => 2])[0]['kind'] === '删除', 'Structural diff');
     // Test importing Laravel's encrypted strings without loading Laravel.
     $legacyKey = random_bytes(32);
     $legacyEncrypt = function ($value) use ($legacyKey) {

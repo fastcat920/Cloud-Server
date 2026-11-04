@@ -44,8 +44,10 @@ with tempfile.TemporaryDirectory(prefix='cloud-native-http-') as directory:
   servers=call('instances&account_id='+str(account_id)+'&region=cn-hangzhou')['data'];assert servers['total']==1
   call('instance.action',{'account_id':account_id,'region':'cn-hangzhou','instance':'i-native-test','operation':'stop','confirmation':'wrong'},csrf,422)
   call('instance.action',{'account_id':account_id,'region':'cn-hangzhou','instance':'i-native-test','operation':'start','confirmation':'i-native-test'},csrf)
+  call('plan.save',{'id':1,'name':'Legacy clients','clients':'1.x','template_id':1,'targets':[target_id]},csrf)
   result=call('config.publish',{'id':1,'targets':[target_id]},csrf)['data'];assert result[0]['status']=='success',result
-  call('config.save',{'id':1,'content':{'domains':[]},'mode':'plain'},csrf,422)
+  replacement=call('config.save',{'id':1,'content':{'domains':[],'unknown_legacy':True},'mode':'plain'},csrf)['data'];assert replacement!=1
+  assert next(v for v in call('overview')['data']['versions'] if v['id']==1)['status']=='published'
   call('target.test',{'id':target_id},csrf)
   cf_id=call('account.save',{'name':'CF','provider':'cloudflare','enabled':True,'token':'test-token'},csrf)['data']
   assert call('cf.zones&account_id='+str(cf_id))['data']['result'][0]['id']=='test-zone'
@@ -60,6 +62,30 @@ with tempfile.TemporaryDirectory(prefix='cloud-native-http-') as directory:
   multipart('restore',{'confirmation':'恢复备份'},json.dumps(backup).encode())
   assert len(call('overview')['data']['accounts'])==1
   call('target.test',{'id':target_id},csrf)
+  call('plan.save',{'id':1,'name':'Legacy clients','clients':'1.x','template_id':1,'targets':[target_id]},csrf)
+  call('config.publish',{'id':1,'targets':[target_id]},csrf)
+  schema={'type':'object','properties':{'api_url':{'type':'string'},'new_flag':{'type':'boolean','default':True}},'required':['api_url'],'additionalProperties':True}
+  template=call('template.save',{'name':'Client 2 structure','schema':schema},csrf)['data']
+  duplicate=call('target.save',{'account_id':account_id,'name':'Alias path','region':'cn-hangzhou','bucket':'test-bucket','key':'config.json','enabled':True},csrf)['data']
+  call('plan.save',{'name':'Conflict','template_id':template,'targets':[duplicate]},csrf,422)
+  target2=call('target.save',{'account_id':account_id,'name':'Client 2 file','region':'cn-hangzhou','bucket':'test-bucket','key':'v2/config.json','enabled':True},csrf)['data']
+  plan2=call('plan.save',{'name':'Client 2','clients':'>=2.0','template_id':template,'targets':[target2]},csrf)['data']
+  call('config.save',{'plan_id':plan2,'template_id':template,'content':{'new_flag':True},'mode':'plain'},csrf,422)
+  derived=call('config.clone',{'id':1,'plan_id':plan2},csrf)['data'];derived_row=next(v for v in call('overview')['data']['versions'] if v['id']==derived);assert derived_row['plan_id']==plan2 and derived_row['schema']==next(v for v in call('overview')['data']['versions'] if v['id']==1)['schema']
+  v2=call('config.save',{'plan_id':plan2,'template_id':template,'content':{'api_url':'https://v2.example.com','future_unknown':{'x':1},'config_version':'client-two'},'mode':'plain'},csrf)['data']
+  row=next(v for v in call('overview')['data']['versions'] if v['id']==v2)
+  assert row['content']['config_version']=='client-two'
+  assert 'new_flag' not in row['content'] and 'domains' not in row['content'] and row['content']['future_unknown']=={'x':1}
+  call('config.publish',{'id':v2,'targets':[target_id]},csrf,422)
+  assert call('config.publish',{'id':v2,'targets':[target2]},csrf)['data'][0]['status']=='success'
+  revised=call('config.save',{'id':v2,'content':{'api_url':'https://v2.example.com','future_unknown':{'x':2},'config_version':'client-two'},'mode':'plain'},csrf)['data'];assert revised!=v2
+  old=next(v for v in call('overview')['data']['versions'] if v['id']==v2);assert old['content']['future_unknown']['x']==1 and old['schema']==schema
+  assert call('config.diff',{'id':revised,'from':v2},csrf)['data'][0]['path']=='$.future_unknown.x'
+  rollback=call('config.clone',{'id':v2},csrf)['data'];assert call('config.publish',{'id':rollback,'targets':[target2]},csrf)['data'][0]['status']=='success'
+  all_versions=call('overview')['data']['versions'];assert next(v for v in all_versions if v['id']==1)['status']=='published'
+  new_backup=call('backup',{},csrf,binary=True);multipart('restore',{'confirmation':'恢复备份'},new_backup)
+  restored=call('overview')['data'];assert len(restored['plans'])==2 and len(restored['templates'])==2
+  print('PASS: independent client plans, immutable schemas and published revisions, missing/new/unknown fields, address isolation, diff and rollback publication')
   call('password',{'old':'native-password-123','password':'new-native-password-456'},csrf)
   call('overview',expected=401)
   call('login',{'email':'owner@example.com','password':'new-native-password-456'},csrf)

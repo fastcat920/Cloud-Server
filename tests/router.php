@@ -10,7 +10,7 @@ $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 if ($path !== '/' && $path !== '/index.php' && is_file($root.$path)) {
     return false;
 }
-foreach (['Store','Security','Cloud','Objects','Configs','Importer','Api'] as $file) {
+foreach (['Store','Security','Cloud','Objects','Configs','Plans','Importer','Api'] as $file) {
     require_once $root.'/_core/'.$file.'.php';
 }
 CloudDesk\Http::$transport = function ($method, $url, $headers, $body) {

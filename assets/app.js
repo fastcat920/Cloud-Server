@@ -109,6 +109,7 @@ let boot = {},
   route = "overview",
   loading = 0,
   configId = 0,
+  planId = 0,
   configTab = "editor",
   editorMode = "form",
   resource = {};
@@ -183,8 +184,11 @@ const accountOptions = (filter = () => true) => [
 ];
 const account = (id) => state.accounts.find((a) => Number(a.id) === Number(id));
 const currentVersion = () =>
-  state.versions.find((v) => v.id === Number(configId)) ||
-  state.versions.at(-1);
+  state.versions.find(
+    (v) =>
+      v.id === Number(configId) && (!planId || v.plan_id === Number(planId)),
+  ) ||
+  state.versions.filter((v) => !planId || v.plan_id === Number(planId)).at(-1);
 const ctx = () =>
   (resource[route] ??= {
     account: "",
@@ -207,8 +211,29 @@ function pageHead(actions = "") {
   const p = pages[route];
   return `<div class="page-head"><div><div class="eyebrow">Cloud Desk / ${e(route)}</div><h1>${e(p[2])}</h1><p class="subtitle">${e(p[3])}</p></div><div class="toolbar">${actions}</div></div>`;
 }
+function normalizeSchema(value, schema) {
+  if (schema.type === "object" && value && typeof value === "object") {
+    const result = {};
+    for (const [key, child] of Object.entries(value))
+      Object.defineProperty(result, key, {
+        value: normalizeSchema(child, schema.properties?.[key] || {}),
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
+    return result;
+  }
+  if (schema.type === "array" && Array.isArray(value))
+    return value.map((v) => normalizeSchema(v, schema.items || {}));
+  return value;
+}
 async function refresh() {
   state = await api("overview");
+  for (const version of state.versions) {
+    version.content = normalizeSchema(version.content, version.schema || {});
+    version._savedMode = version.mode;
+    version._savedSummary = version.summary || "";
+  }
   render();
 }
 function auth() {
@@ -607,19 +632,35 @@ const features = {
   traffic_details_enabled: "流量明细",
 };
 const platforms = ["android", "windows", "macos", "linux", "ios", "tvos"];
+function activePlan() {
+  return state.plans?.find((p) => p.id === Number(planId)) || state.plans?.[0];
+}
 function configsView() {
+  const plan = activePlan();
+  if (plan) planId = plan.id;
   const r = currentVersion();
   const tabs = {
-    editor: "配置编辑",
+    editor: "配置与修订",
     targets: "发布目标",
     releases: "发布历史",
+    templates: "结构模板",
     security: "加密与签名",
   };
+  const controls = `<div class="toolbar">${button("新建方案", "plan.edit", {}, "", "plus")}${button("方案设置", "plan.edit", { id: plan?.id })}${button("新建草稿", "config.new", {}, "", "plus")}${r ? button("对比修订", "config.diff", { id: r.id }) : ""}${r ? button("预览", "config.preview", { id: r.id }) : ""}</div>`;
+  const versions = state.versions.filter((v) => v.plan_id === plan?.id);
   return (
-    pageHead(
-      `<div class="toolbar">${button("新建草稿", "config.new", {}, "", "plus")}${r ? button("复制版本", "config.clone", { id: r.id }) : ""}${r ? button("预览", "config.preview", { id: r.id }) : ""}${r ? button("发布配置", "config.publish", { id: r.id }, "primary", "arrow") : ""}</div>`,
-    ) +
-    `<div class="tabs">${Object.entries(tabs)
+    pageHead(controls) +
+    `<div class="resource-controls">${select(
+      "plan-picker",
+      "客户端配置方案",
+      (state.plans || []).map((p) => ({
+        value: p.id,
+        label: p.name + " · " + (p.clients || "未标记客户端版本"),
+      })),
+      plan?.id,
+    )}<div class="notice" style="margin:0">各方案独立发布。编辑历史修订时保留原结构；保存已发布内容会生成新修订。</div></div><div class="tabs">${Object.entries(
+      tabs,
+    )
       .map(
         ([k, v]) =>
           `<button class="tab ${configTab === k ? "active" : ""}" data-action="config.tab" data-tab="${k}">${v}</button>`,
@@ -631,53 +672,100 @@ function configsView() {
         ? releasesView()
         : configTab === "security"
           ? configSecurityView()
-          : `<div class="config-layout"><aside class="versions">${[
-              ...state.versions,
-            ]
-              .reverse()
-              .map(
-                (v) =>
-                  `<button class="version ${r?.id === v.id ? "active" : ""}" data-action="config.select" data-id="${v.id}"><strong>Version ${v.version} ${badge(statusNames[v.status] || v.status, v.status === "published" ? "good" : "")}</strong><span>${e(v.summary || "未填写说明")}<br>${e(date(v.created_at))}</span></button>`,
-              )
-              .join(
-                "",
-              )}</aside>${r ? editorView(r) : panel("配置", empty("还没有配置版本", "创建一个草稿开始编辑。", "config.new", "新建草稿", "code"))}</div>`)
+          : configTab === "templates"
+            ? templatesView()
+            : `<div class="config-layout"><aside class="versions">${[
+                ...versions,
+              ]
+                .reverse()
+                .map(
+                  (v) =>
+                    `<button class="version ${r?.id === v.id ? "active" : ""}" data-action="config.select" data-id="${v.id}"><strong>修订 r${v.revision} ${badge(statusNames[v.status] || v.status, v.status === "published" ? "good" : "")}</strong><span>${e(v.summary || "未填写说明")}<br>${e(date(v.created_at))}</span></button>`,
+                )
+                .join(
+                  "",
+                )}</aside>${r ? editorView(r) : panel("配置", empty("此方案还没有修订", "从结构模板创建草稿，或从其他方案参考 JSON。", "config.new", "新建草稿", "code"))}</div>`)
   );
 }
+function schemaFields(r) {
+  const properties = r.schema?.properties || {},
+    content = r.content || {},
+    keys = [...new Set([...Object.keys(properties), ...Object.keys(content)])];
+  return keys
+    .map((key, i) => {
+      const spec = Object.hasOwn(properties, key) ? properties[key] : {},
+        exists = Object.hasOwn(content, key),
+        value = content[key],
+        type =
+          spec.type ||
+          (typeof value === "boolean"
+            ? "boolean"
+            : typeof value === "number"
+              ? "number"
+              : typeof value === "string"
+                ? "string"
+                : "object");
+      if (!exists)
+        return `<div class="field"><span>${e(spec.title || key)}</span>${button("添加参数", "schema.add", { key }, "text")}<small class="help">当前修订未包含此参数，不会自动补入。</small></div>`;
+      const name = "parameter_" + i;
+      let control;
+      if (spec.enum)
+        control = select(
+          name,
+          spec.title || key,
+          spec.enum.map((v) => ({
+            value: JSON.stringify(v),
+            label: String(v),
+          })),
+          JSON.stringify(value),
+        );
+      else if (type === "boolean")
+        control = check(name, spec.title || key, value);
+      else
+        control = field(
+          name,
+          spec.title || key,
+          ["object", "array", "null"].includes(type)
+            ? JSON.stringify(value, null, 2)
+            : value,
+          ["object", "array", "null"].includes(type)
+            ? "textarea"
+            : type === "number" || type === "integer"
+              ? "number"
+              : "text",
+          ["object", "array", "null"].includes(type)
+            ? 'class="code" style="min-height:110px"'
+            : type === "number"
+              ? 'step="any"'
+              : "",
+        );
+      return `<div data-parameter="${e(key)}" data-type="${e(type)}" data-name="${name}" data-enum="${spec.enum ? "1" : ""}">${control}<div class="toolbar"><small class="help mono">${e(key)}${spec.description ? " · " + e(spec.description) : ""}${properties[key] ? "" : " · 模板外参数，原样保留"}</small>${button("移除此参数", "schema.remove", { key }, "text")}</div></div>`;
+    })
+    .join("");
+}
 function editorView(r) {
-  const content = r.content || {},
-    contact = content.contact || {},
-    readonly = r.status !== "draft";
   return panel(
-    `编辑 v${r.version}`,
-    `<form id="config-form" class="panel-body"><input type="hidden" name="id" value="${r.id}"><div class="toolbar" style="justify-content:space-between;margin-bottom:22px"><div>${badge(readonly ? "此版本只读，请复制后编辑" : "草稿可编辑", readonly ? "" : "good")}</div>${button(editorMode === "json" ? "可视化编辑" : "完整 JSON", "config.mode", {}, "text", "code")}</div>${select(
+    `基于修订 r${r.revision} 编辑`,
+    `<form id="config-form" class="panel-body"><input type="hidden" name="id" value="${r.id}"><div class="toolbar" style="justify-content:space-between;margin-bottom:22px">${badge("结构快照 #" + r.template_id)}${button("本次变更", "config.localdiff", {}, "text")}${button("升级配置结构", "schema.upgrade", {}, "text")}${button(editorMode === "json" ? "结构表单" : "完整 JSON", "config.mode", {}, "text", "code")}</div>${select(
       "mode",
       "输出格式",
       Object.entries(modes).map(([value, label]) => ({ value, label })),
       r.mode,
-    )}${field("summary", "版本说明", r.summary || "")}${
-      editorMode === "json"
-        ? field(
-            "content",
-            "完整配置 JSON",
-            JSON.stringify(content, null, 2),
-            "textarea",
-            'class="code" required',
-          )
-        : `<div class="form-grid">${field("panel_type", "面板类型", content.panel_type || "v2board")}${field("api_prefix", "API 前缀", content.api_prefix || "/api/v1")}${field("domains", "面板域名（每行一个）", (content.domains || []).join("\n"), "textarea")}${field("gateway_urls", "网关地址（每行一个）", (content.gateway_urls || []).join("\n"), "textarea")}${field("website", "官网地址（每行一个）", (contact.website || []).join("\n"), "textarea")}${field("invite_domain", "邀请域名", contact.invite_domain || "")}${field("telegram_group", "Telegram 群组", contact.telegram_group || "")}${field("crisp_website_id", "Crisp 网站 ID", contact.crisp_website_id || "")}${field("crisp_proxy_url", "Crisp 代理地址", contact.crisp_proxy_url || "")}${field("display_discount_percent", "延迟显示折扣 %", content.latency?.display_discount_percent || 0, "number", 'min="0" max="100"')}</div><div class="section-label">客户端功能开关</div><div class="form-grid">${Object.entries(
-            features,
-          )
-            .map(([key, label]) =>
-              check(key, label, content.features?.[key] ?? true),
-            )
-            .join("")}</div><div class="section-label">平台更新</div>${platforms
-            .map((p) => {
-              const u = content.update?.platforms?.[p] || {},
-                store = ["ios", "tvos"].includes(p);
-              return `<details><summary>${e(p.toUpperCase())} 更新配置</summary><div class="form-grid" style="padding-top:18px">${check(p + "_enabled", "启用平台", u.enabled)}${check(p + "_force", "强制更新", u.force)}${field(p + "_latest", "最新版本", u.latest_version || "")}${field(p + "_minimum", "最低支持版本", u.min_supported_version || "")}${field(p + "_url", store ? "App Store ID" : "下载地址", store ? u.app_id || "" : u.url || "")}${field(p + "_zh", "更新说明（中文）", u.changelog?.zh_CN || "", "textarea")}${field(p + "_en", "更新说明（英文）", u.changelog?.en_US || "", "textarea")}</div></details>`;
-            })
-            .join("")}`
-    }<div class="toolbar" style="margin-top:24px">${!readonly ? '<button class="button primary" type="submit">保存草稿</button>' : ""}${!readonly ? button("删除草稿", "config.delete", { id: r.id }, "danger") : ""}</div></form>`,
+    )}${field("summary", "本次修改说明", r.summary || "")}${editorMode === "json" ? field("content", "完整配置 JSON", JSON.stringify(r.content, null, 2), "textarea", 'class="code" required') : `<div class="form-grid">${schemaFields(r)}</div>`}<div class="toolbar" style="margin-top:24px"><button class="button primary" type="submit">保存修订</button>${button("保存并推送", "config.savepush", {}, "primary", "arrow")}${button("重新推送此修订", "config.publish", { id: r.id })}${button("基于此修订回滚推送", "config.rollback", { id: r.id }, "danger")}${r.status === "draft" ? button("删除草稿", "config.delete", { id: r.id }, "danger") : ""}</div></form>`,
+  );
+}
+function templatesView() {
+  return panel(
+    "不可变结构模板",
+    table(
+      ["模板", "字段数量", "操作"],
+      (state.templates || []).map((t) => [
+        e(t.name),
+        Object.keys(t.schema.properties || {}).length,
+        button("查看 / 派生新模板", "template.edit", { id: t.id }, "text"),
+      ]),
+    ),
+    button("新增结构模板", "template.edit", {}, "primary", "plus"),
   );
 }
 function targetsView() {
@@ -826,54 +914,50 @@ async function queryResources() {
 function configContent(form) {
   const data = Object.fromEntries(new FormData(form));
   if (editorMode === "json") return JSON.parse(data.content);
-  const old = structuredClone(currentVersion()?.content || {}),
-    lines = (v) =>
-      String(v || "")
-        .split(/\r?\n/)
-        .map((v) => v.trim())
-        .filter(Boolean);
-  old.panel_type = data.panel_type;
-  old.api_prefix = data.api_prefix;
-  old.domains = lines(data.domains);
-  old.gateway_urls = lines(data.gateway_urls);
-  old.contact = {
-    ...old.contact,
-    website: lines(data.website),
-    invite_domain: data.invite_domain,
-    telegram_group: data.telegram_group,
-    crisp_website_id: data.crisp_website_id,
-    crisp_proxy_url: data.crisp_proxy_url,
-  };
-  old.features = {
-    ...old.features,
-    ...Object.fromEntries(
-      Object.keys(features).map((k) => [k, data[k] === "on"]),
-    ),
-  };
-  old.latency = {
-    ...old.latency,
-    display_discount_percent: Number(data.display_discount_percent),
-  };
-  old.update = {
-    ...old.update,
-    schema_version: 2,
-    platforms: { ...old.update?.platforms },
-  };
-  for (const p of platforms) {
-    const store = ["ios", "tvos"].includes(p);
-    old.update.platforms[p] = {
-      ...old.update.platforms[p],
-      enabled: data[p + "_enabled"] === "on",
-      force: data[p + "_force"] === "on",
-      source: store ? "app_store" : "direct",
-      latest_version: data[p + "_latest"],
-      min_supported_version: data[p + "_minimum"],
-      url: store ? "" : data[p + "_url"],
-      app_id: store ? data[p + "_url"] : "",
-      changelog: { zh_CN: data[p + "_zh"], en_US: data[p + "_en"] },
-    };
+  const content = structuredClone(currentVersion()?.content || {});
+  for (const node of form.querySelectorAll("[data-parameter]")) {
+    const { parameter: key, type, name, enum: isEnum } = node.dataset;
+    const value = data[name];
+    if (isEnum) content[key] = JSON.parse(value);
+    else if (type === "boolean") content[key] = data[name] === "on";
+    else if (["object", "array", "null"].includes(type))
+      content[key] = JSON.parse(value);
+    else if (type === "number" || type === "integer") {
+      if (value === "") throw new Error(key + " 需要填写数值");
+      content[key] = Number(value);
+    } else content[key] = value;
   }
-  return old;
+  return content;
+}
+function dirtyConfig() {
+  const form = document.querySelector("#config-form"),
+    r = currentVersion();
+  if (!form || !r) return false;
+  try {
+    return (
+      JSON.stringify(configContent(form)) !==
+        JSON.stringify(r._savedContent || r.content) ||
+      form.elements.mode.value !== (r._savedMode || r.mode) ||
+      form.elements.summary.value !== (r._savedSummary ?? r.summary ?? "")
+    );
+  } catch {
+    return true;
+  }
+}
+async function saveCurrentConfig() {
+  const form = document.querySelector("#config-form");
+  if (!form.reportValidity()) throw new Error("请检查配置字段");
+  const data = Object.fromEntries(new FormData(form));
+  configId = await api("config.save", {
+    id: Number(data.id),
+    plan_id: planId,
+    template_id: currentVersion().template_id,
+    content: configContent(form),
+    mode: data.mode,
+    summary: data.summary,
+  });
+  await refresh();
+  return configId;
 }
 function editAccount(id) {
   const a = account(id);
@@ -1303,15 +1387,18 @@ const actions = {
     render();
   },
   "config.select": (d) => {
+    if (dirtyConfig() && !window.confirm("当前配置尚未保存，确定切换修订？"))
+      return;
     configId = Number(d.id);
     render();
   },
   "config.mode": () => {
     const form = document.querySelector("#config-form");
-    if (currentVersion()?.status === "draft") {
+    if (currentVersion()) {
       try {
         const content = configContent(form);
         const r = currentVersion();
+        r._savedContent ??= structuredClone(r.content);
         r.content = content;
         r.mode = form.elements.mode.value;
         r.summary = form.elements.summary.value;
@@ -1325,12 +1412,18 @@ const actions = {
   "config.new": async () => {
     const base = currentVersion();
     configId = await api("config.save", {
-      content: base?.content || {
-        panel_type: "v2board",
-        api_prefix: "/api/v1",
-        domains: [],
-        gateway_urls: [],
-      },
+      plan_id: planId,
+      template_id: activePlan()?.template_id,
+      content:
+        base?.content ||
+        Object.fromEntries(
+          Object.entries(
+            state.templates.find((t) => t.id === activePlan()?.template_id)
+              ?.schema.properties || {},
+          )
+            .filter(([, v]) => Object.hasOwn(v, "default"))
+            .map(([k, v]) => [k, v.default]),
+        ),
       mode: base?.mode || "plain",
       summary: "新建草稿",
     });
@@ -1368,8 +1461,11 @@ const actions = {
     );
   },
   "config.publish": (d) => {
-    const targets = state.targets.filter((t) => t.enabled);
-    if (!targets.length) throw new Error("请先添加发布目标");
+    const plan = activePlan();
+    const targets = state.targets.filter(
+      (t) => t.enabled && plan?.targets.includes(t.id),
+    );
+    if (!targets.length) throw new Error("请在方案设置中绑定独立发布目标");
     modal(
       "发布客户端配置",
       "会上传版本文件并更新固定路径，然后校验云端内容。请先保存草稿；未保存的编辑不会发布。",
@@ -1503,6 +1599,302 @@ const actions = {
       "导入数据",
     ),
 };
+function schemaDefaults(value, schema) {
+  if (
+    schema.type === "object" &&
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+  ) {
+    const out = structuredClone(value);
+    for (const [k, spec] of Object.entries(schema.properties || {})) {
+      if (!Object.hasOwn(out, k)) {
+        if (Object.hasOwn(spec, "default"))
+          Object.defineProperty(out, k, {
+            value: structuredClone(spec.default),
+            enumerable: true,
+            writable: true,
+            configurable: true,
+          });
+      } else out[k] = schemaDefaults(out[k], spec);
+    }
+    return out;
+  }
+  if (schema.type === "array" && Array.isArray(value))
+    return value.map((item) => schemaDefaults(item, schema.items || {}));
+  return value;
+}
+function removeParameter(content, path) {
+  const parts = path.split(".");
+  let node = content;
+  for (const key of parts.slice(0, -1)) {
+    if (!node || typeof node !== "object" || !Object.hasOwn(node, key)) return;
+    node = node[key];
+  }
+  if (node && typeof node === "object") delete node[parts.at(-1)];
+}
+function localDiff(a, b, path = "$") {
+  if (JSON.stringify(a) === JSON.stringify(b)) return [];
+  if (
+    a &&
+    b &&
+    typeof a === "object" &&
+    typeof b === "object" &&
+    !Array.isArray(a) &&
+    !Array.isArray(b)
+  )
+    return [...new Set([...Object.keys(a), ...Object.keys(b)])].flatMap((k) =>
+      !Object.hasOwn(a, k)
+        ? [{ path: path + "." + k, kind: "新增", after: b[k] }]
+        : !Object.hasOwn(b, k)
+          ? [{ path: path + "." + k, kind: "删除", before: a[k] }]
+          : localDiff(a[k], b[k], path + "." + k),
+    );
+  return [{ path, kind: "修改", before: a, after: b }];
+}
+Object.assign(actions, {
+  "config.localdiff": () => {
+    const r = currentVersion();
+    showJson(
+      "尚未保存的参数变化",
+      localDiff(
+        r._savedContent || r.content,
+        configContent(document.querySelector("#config-form")),
+      ),
+    );
+  },
+  "plan.edit": (d) => {
+    const p = state.plans.find((p) => p.id === Number(d.id)),
+      source = currentVersion();
+    modal(
+      p ? "编辑配置方案" : "创建配置方案",
+      "不同客户端结构使用独立方案与对象路径。模板仅用于新草稿，不会修改已有修订。",
+      field("name", "方案名称", p?.name || "", "text", "required") +
+        (!p && source
+          ? check(
+              "copy_source",
+              `以当前已保存修订 r${source.revision} 为基础（保留原结构）`,
+              true,
+            )
+          : "") +
+        field(
+          "clients",
+          "适用客户端版本",
+          p?.clients || "",
+          "text",
+          'placeholder="例如 1.x / >=2.0"',
+        ) +
+        select(
+          "template_id",
+          "新修订默认结构模板",
+          state.templates.map((t) => ({ value: t.id, label: t.name })),
+          p?.template_id || source?.template_id,
+        ) +
+        state.targets
+          .map((t) =>
+            check(
+              "target_" + t.id,
+              t.name + " · " + t.bucket + "/" + t.key,
+              p?.targets.includes(t.id),
+            ),
+          )
+          .join(""),
+      async (data) => {
+        planId = await api("plan.save", {
+          id: p?.id || 0,
+          name: data.get("name"),
+          clients: data.get("clients"),
+          template_id: Number(data.get("template_id")),
+          targets: state.targets
+            .filter((t) => data.has("target_" + t.id))
+            .map((t) => t.id),
+        });
+        configId =
+          !p && source && data.has("copy_source")
+            ? await api("config.clone", { id: source.id, plan_id: planId })
+            : 0;
+        await refresh();
+      },
+    );
+  },
+  "template.edit": (d) => {
+    const t = state.templates.find((t) => t.id === Number(d.id));
+    modal(
+      "创建结构模板版本",
+      "保存会创建新模板，不会修改旧结构。支持 type、properties、required、enum、items、minimum、minLength 与 additionalProperties。",
+      field(
+        "name",
+        "模板名称",
+        t ? t.name + "（新版）" : "",
+        "text",
+        "required",
+      ) +
+        field(
+          "schema",
+          "结构 JSON",
+          JSON.stringify(
+            t?.schema || {
+              type: "object",
+              properties: {},
+              additionalProperties: true,
+            },
+            null,
+            2,
+          ),
+          "textarea",
+          'class="code" required',
+        ),
+      async (data) => {
+        await api("template.save", {
+          name: data.get("name"),
+          schema: JSON.parse(data.get("schema")),
+        });
+        await refresh();
+      },
+    );
+  },
+  "schema.add": (d) => {
+    const r = currentVersion();
+    r._savedContent ??= structuredClone(r.content);
+    r.content = configContent(document.querySelector("#config-form"));
+    const spec = r.schema.properties[d.key] || {};
+    const defaults = {
+      object: {},
+      array: [],
+      boolean: false,
+      integer: 0,
+      number: 0,
+      null: null,
+      string: "",
+    };
+    const value = Object.hasOwn(spec, "default")
+      ? structuredClone(spec.default)
+      : Object.hasOwn(defaults, spec.type)
+        ? defaults[spec.type]
+        : "";
+    Object.defineProperty(r.content, d.key, {
+      value,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+    render();
+  },
+  "schema.remove": (d) => {
+    const r = currentVersion();
+    r._savedContent ??= structuredClone(r.content);
+    r.content = configContent(document.querySelector("#config-form"));
+    delete r.content[d.key];
+    render();
+  },
+  "schema.upgrade": () => {
+    const r = currentVersion(),
+      before = configContent(document.querySelector("#config-form"));
+    modal(
+      "显式升级结构",
+      "仅在确认后切换结构。默认保留未知和旧参数；要删除的参数必须手工列出。升级内容保存后才生效。",
+      select(
+        "template_id",
+        "目标结构",
+        state.templates.map((t) => ({ value: t.id, label: t.name })),
+        activePlan().template_id,
+      ) +
+        field(
+          "remove",
+          "明确删除的参数路径（每行一个，如 contact.old_key）",
+          "",
+          "textarea",
+        ),
+      async (data) => {
+        const t = state.templates.find(
+            (t) => t.id === Number(data.get("template_id")),
+          ),
+          after = schemaDefaults(before, t.schema);
+        for (const key of String(data.get("remove"))
+          .split(/\r?\n/)
+          .map((k) => k.trim())
+          .filter(Boolean))
+          removeParameter(after, key);
+        setTimeout(
+          () =>
+            modal(
+              "确认结构升级差异",
+              "只更改编辑内容；确认后仍需保存修订，历史记录不会被修改。",
+              field(
+                "diff",
+                "本次变化",
+                JSON.stringify(localDiff(before, after), null, 2),
+                "textarea",
+                'class="code" readonly',
+              ),
+              async () => {
+                r._savedContent ??= structuredClone(r.content);
+                r.content = after;
+                r.schema = structuredClone(t.schema);
+                r.template_id = t.id;
+                render();
+                toast("结构已切换，请保存修订");
+              },
+              "确认应用",
+            ),
+          0,
+        );
+      },
+      "确认升级",
+    );
+  },
+  "config.diff": (d) => {
+    const r = currentVersion(),
+      versions = state.versions.filter(
+        (v) => v.plan_id === r.plan_id && v.id !== r.id,
+      );
+    if (!versions.length) throw new Error("当前方案还没有其他修订");
+    modal(
+      "修订差异",
+      "对比已保存修订，不包含尚未保存的编辑。",
+      select(
+        "from",
+        "基准修订",
+        versions.map((v) => ({
+          value: v.id,
+          label: "r" + v.revision + " · " + v.summary,
+        })),
+        r.parent_id || versions.at(-1).id,
+      ),
+      async (data) => {
+        const differences = await api("config.diff", {
+          id: d.id,
+          from: Number(data.get("from")),
+        });
+        setTimeout(() => showJson("参数差异", differences), 0);
+      },
+      "查看差异",
+    );
+  },
+  "config.savepush": async () => {
+    const id = await saveCurrentConfig();
+    actions["config.publish"]({ id });
+  },
+  "config.rollback": (d) =>
+    confirm(
+      "回滚并推送",
+      "创建与所选历史修订内容一致的新修订，重新推送到该方案当前绑定的全部目标。",
+      "r" + currentVersion().revision,
+      async () => {
+        const targets = activePlan().targets;
+        if (!targets.length) throw new Error("请先绑定发布目标");
+        configId = await api("config.clone", { id: d.id });
+        const results = await api("config.publish", { id: configId, targets });
+        await refresh();
+        toast(
+          results.some((r) => r.status === "failed")
+            ? "部分目标回滚失败，请查看发布历史"
+            : "回滚推送完成",
+          results.some((r) => r.status === "failed"),
+        );
+      },
+    ),
+});
 document.addEventListener("click", async (event) => {
   const node = event.target.closest("[data-action]");
   if (!node) return;
@@ -1518,6 +1910,16 @@ document.addEventListener("click", async (event) => {
   }
 });
 document.addEventListener("change", (event) => {
+  if (event.target.id === "plan-picker") {
+    if (dirtyConfig() && !window.confirm("当前配置尚未保存，确定切换方案？")) {
+      event.target.value = String(planId);
+      return;
+    }
+    planId = Number(event.target.value);
+    configId = 0;
+    render();
+    return;
+  }
   if (
     event.target.closest("#resource-form") &&
     event.target.name === "account_id"
@@ -1578,14 +1980,8 @@ document.addEventListener("submit", async (event) => {
       Object.assign(ctx(), { prefix: data.prefix, marker: "", history: [] });
       await queryResources();
     } else if (formId === "config-form") {
-      configId = await api("config.save", {
-        id: Number(data.id),
-        content: configContent(form),
-        mode: data.mode,
-        summary: data.summary,
-      });
-      toast("草稿已保存");
-      await refresh();
+      await saveCurrentConfig();
+      toast("修订已保存，历史发布内容保持不变");
     } else if (formId === "config-security") {
       await api("config.settings", {
         xor_key: data.xor_key,

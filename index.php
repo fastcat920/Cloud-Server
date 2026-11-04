@@ -7,7 +7,7 @@ header('X-Frame-Options: DENY');
 header('Referrer-Policy: same-origin');
 header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
 if (isset($_GET['api'])) {
-    foreach (['Store','Security','Cloud','Objects','Configs','Importer','Api'] as $file) {
+    foreach (['Store','Security','Cloud','Objects','Configs','Plans','Importer','Api'] as $file) {
         require_once __DIR__.'/_core/'.$file.'.php';
     }
     try {

@@ -13,7 +13,7 @@ final class Configs
     {
         return ['config_version' => '1','panel_type' => 'v2board','api_prefix' => '/api/v1','domains' => [],'gateway_urls' => [],'contact' => ['website' => []],'features' => array_fill_keys(['balance_enabled','devices_enabled','gift_card_enabled','join_group_enabled','knowledge_base_enabled','orders_enabled','tickets_enabled','traffic_details_enabled'], true),'update' => ['schema_version' => 2,'platforms' => new \stdClass()],'latency' => ['display_discount_percent' => 0]];
     }
-    public static function canonical(array $content): string
+    public static function canonical(array|object $content): string
     {
         $sort = function (&$value) use (&$sort) {
             if (is_array($value)) {
@@ -28,9 +28,26 @@ final class Configs
         $sort($content);
         return json_encode($content, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
     }
+    public static function materialize(mixed $value, array $schema): mixed
+    {
+        if (($schema['type'] ?? null) === 'object' && is_array($value)) {
+            if ($value === []) {
+                return new \stdClass();
+            }
+            foreach ($value as $key => &$child) {
+                $child = self::materialize($child, $schema['properties'][$key] ?? []);
+            }
+            unset($child);
+        } elseif (($schema['type'] ?? null) === 'array' && is_array($value)) {
+            foreach ($value as &$child) {
+                $child = self::materialize($child, $schema['items'] ?? []);
+            }
+        }
+        return $value;
+    }
     public function encode(array $version, array $settings): string
     {
-        $plain = self::canonical($version['content']);
+        $plain = self::canonical(self::materialize($version['content'], $version['schema'] ?? []));
         $mode = $version['mode'];
         if ($mode === 'plain') {
             return $plain;

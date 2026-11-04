@@ -143,7 +143,7 @@ final class Api
             }
             $authenticated = isset($state['admin'],$_SESSION['auth']) && hash_equals((string)($state['admin']['epoch'] ?? ''), (string)$_SESSION['auth']) && ($_SESSION['expires'] ?? 0) > time();
             if ($action === 'boot') {
-                $this->respond(['installed' => isset($state['admin']),'authenticated' => $authenticated,'csrf' => $csrf,'email' => $authenticated ? $state['admin']['email'] : null,'version' => '2.0.0','environment' => ['php' => PHP_VERSION,'missing' => array_values(array_filter(['openssl','curl','simplexml'], fn ($e) => !extension_loaded($e)))]]);
+                $this->respond(['installed' => isset($state['admin']),'authenticated' => $authenticated,'csrf' => $csrf,'email' => $authenticated ? $state['admin']['email'] : null,'version' => '2.1.0','environment' => ['php' => PHP_VERSION,'missing' => array_values(array_filter(['openssl','curl','simplexml'], fn ($e) => !extension_loaded($e)))]]);
             }
             if ($action === 'setup') {
                 $this->limited('setup', 10, 600);
@@ -204,7 +204,8 @@ final class Api
     private function dispatch(string $action): mixed
     {
         switch ($action) {
-            case 'overview':return $this->safe($this->store->read());
+            case 'overview':Plans::migrate($this->store);
+                return $this->safe($this->store->read());
             case 'password':$old = $this->text('old', 256);
                 $new = $this->text('password', 256);
                 if (strlen($new) < 12) {
@@ -427,6 +428,12 @@ final class Api
                         }
                     }
                     $s['targets'] = array_values(array_filter($s['targets'], fn ($r) => $r['id'] !== $id));
+                    if (isset($s['plans'])) {
+                        foreach ($s['plans'] as &$plan) {
+                            $plan['targets'] = array_values(array_diff($plan['targets'], [$id]));
+                        }
+                    }
+                    unset($plan);
                     return true;
                 });
             case 'target.test':$s = $this->store->read();
@@ -448,13 +455,66 @@ final class Api
                     }
                 }
                 return true;
+            case 'template.save':
+                $schema = $this->input['schema'] ?? null;
+                if (!is_array($schema)) {
+                    throw new ApiError('模板必须是 JSON 对象');
+                }Plans::checkSchema($schema);
+                $name = $this->text('name', 100);
+                return $this->store->transaction(function (array &$s) use ($schema, $name) {
+                    $id = Store::id($s, 'templates');
+                    $s['templates'][] = ['id' => $id,'name' => $name,'schema' => $schema];
+                    return $id;
+                });
+            case 'plan.save':
+                $name = $this->text('name', 100);
+                $clients = $this->text('clients', 200, false);
+                $template = $this->id('template_id');
+                $targets = array_values(array_unique(array_map('intval', $this->input['targets'] ?? [])));
+                $id = (int)($this->input['id'] ?? 0);
+                return $this->store->transaction(function (array &$s) use ($name, $clients, $template, $targets, $id) {
+                    Store::find($s, 'templates', $template);
+                    if ($id) {
+                        Store::find($s, 'plans', $id);
+                    }
+                    foreach ($targets as $target) {
+                        $selected = Store::find($s, 'targets', $target);
+                        foreach ($s['plans'] as $plan) {
+                            if ($plan['id'] !== $id) {
+                                foreach ($plan['targets'] as $other) {
+                                    $existing = Store::find($s, 'targets', $other);
+                                    if ($other === $target || [$existing['account_id'],$existing['region'],$existing['bucket'],$existing['key']] === [$selected['account_id'],$selected['region'],$selected['bucket'],$selected['key']]) {
+                                        throw new ApiError('发布地址已属于方案「'.$plan['name'].'」，请使用独立对象路径');
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    $row = ['id' => $id ?: Store::id($s, 'plans'),'name' => $name,'clients' => $clients,'template_id' => $template,'targets' => $targets];
+                    Store::put($s, 'plans', $row);
+                    return $row['id'];
+                });
+            case 'config.diff':
+                $s = $this->store->read();
+                $to = Store::find($s, 'versions', $this->id());
+                $from = Store::find($s, 'versions', $this->id('from'));
+                return Plans::diff($from['content'], $to['content']);
             case 'config.save':return $this->saveVersion();
             case 'config.clone':$id = $this->id();
-                return $this->store->transaction(function (array &$s) use ($id) {
+                $newPlan = (int)($this->input['plan_id'] ?? 0);
+                return $this->store->transaction(function (array &$s) use ($id, $newPlan) {
                     $r = Store::find($s, 'versions', $id);
+                    $r['parent_id'] = $r['id'];
+                    if ($newPlan) {
+                        Store::find($s, 'plans', $newPlan);
+                        $r['plan_id'] = $newPlan;
+                    }
+                    $r['revision'] = 1 + max(array_merge([0], array_column(array_filter($s['versions'], fn ($v) => ($v['plan_id'] ?? 1) === ($r['plan_id'] ?? 1)), 'revision')));
                     $r['id'] = Store::id($s, 'versions');
                     $r['version'] = $r['id'];
-                    $r['content']['config_version'] = (string)$r['version'];
+                    if (($r['legacy_validation'] ?? false) && array_key_exists('config_version', $r['content'])) {
+                        $r['content']['config_version'] = (string)$r['version'];
+                    }
                     $r['status'] = 'draft';
                     $r['created_at'] = time();
                     $r['summary'] = '复制版本';
@@ -541,11 +601,12 @@ final class Api
     }
     private function saveVersion(): int
     {
+        Plans::migrate($this->store);
         $id = (int)($this->input['id'] ?? 0);
         $content = $this->input['content'] ?? null;
         if (!is_array($content)) {
             throw new ApiError('客户端配置必须是 JSON 对象');
-        }Configs::validate($content);
+        }
         $mode = $this->text('mode', 30);
         if (!in_array($mode, ['plain','xor_base64','signed_xor_v2'], true)) {
             throw new ApiError('加密模式无效');
@@ -554,9 +615,31 @@ final class Api
         return $this->store->transaction(function (array &$s) use ($id, $content, $mode, $summary) {
             $r = $id ? Store::find($s, 'versions', $id) : ['id' => Store::id($s, 'versions'),'created_at' => time(),'status' => 'draft'];
             if ($r['status'] !== 'draft') {
-                throw new ApiError('已发布版本不可修改，请先复制为草稿');
+                $r['parent_id'] = $r['id'];
+                $r['id'] = Store::id($s, 'versions');
+                $r['version'] = $r['id'];
+                $r['status'] = 'draft';
+                $r['created_at'] = time();
+                $r['revision'] = 1 + max(array_merge([0], array_column(array_filter($s['versions'], fn ($v) => ($v['plan_id'] ?? 1) === ($r['plan_id'] ?? 1)), 'revision')));
             }
-            $content['config_version'] = (string)($r['version'] ?? $r['id']);
+            $planId = $r['plan_id'] ?? (int)($this->input['plan_id'] ?? 1);
+            $plan = Store::find($s, 'plans', $planId);
+            $r['plan_id'] = $planId;
+            $templateId = (int)($this->input['template_id'] ?? ($r['template_id'] ?? $plan['template_id']));
+            if (!isset($r['schema']) || $templateId !== ($r['template_id'] ?? null)) {
+                $template = Store::find($s, 'templates', $templateId);
+                $r['schema'] = $template['schema'];
+                $r['template_id'] = $templateId;
+                $r['legacy_validation'] = $template['legacy_validation'] ?? false;
+            }
+            if ($r['legacy_validation'] ?? false) {
+                Configs::validate($content);
+            }
+            $r['revision'] ??= 1 + max(array_merge([0], array_column(array_filter($s['versions'], fn ($v) => ($v['plan_id'] ?? 1) === $planId), 'revision')));
+            Plans::validate($content, $r['schema']);
+            if (($r['legacy_validation'] ?? false) && array_key_exists('config_version', $content)) {
+                $content['config_version'] = (string)($r['version'] ?? $r['id']);
+            }
             $r = array_merge($r, ['version' => $r['version'] ?? $r['id'],'content' => $content,'mode' => $mode,'summary' => $summary]);
             Store::put($s, 'versions', $r);
             Store::event($s, 'config.save', 'v'.$r['version']);
@@ -589,7 +672,26 @@ final class Api
             throw new ApiError('请选择发布目标');
         }
         $snapshot = $this->store->read();
+        Plans::migrate($this->store);
+        $snapshot = $this->store->read();
         $version = Store::find($snapshot, 'versions', $id);
+        $plan = Store::find($snapshot, 'plans', $version['plan_id'] ?? 1);
+        if (array_diff($targetIds, $plan['targets'])) {
+            throw new ApiError('发布目标未绑定当前方案，请先在方案设置中选择独立路径');
+        }
+        foreach ($targetIds as $targetId) {
+            $target = Store::find($snapshot, 'targets', $targetId);
+            foreach ($snapshot['plans'] as $otherPlan) {
+                if ($otherPlan['id'] !== $plan['id']) {
+                    foreach ($otherPlan['targets'] as $otherId) {
+                        $other = Store::find($snapshot, 'targets', $otherId);
+                        if ([$target['region'],$target['bucket'],$target['key']] === [$other['region'],$other['bucket'],$other['key']] && Store::find($snapshot, 'accounts', $target['account_id'])['provider'] === Store::find($snapshot, 'accounts', $other['account_id'])['provider']) {
+                            throw new ApiError('发布路径与其他方案冲突，请先修改目标路径');
+                        }
+                    }
+                }
+            }
+        }
         $payload = $this->configs->encode($version, $snapshot['settings']);
         $checksum = hash('sha256', $payload);
         $jobs = $this->store->transaction(function (array &$s) use ($id, $targetIds, $checksum, $version) {
@@ -654,7 +756,7 @@ final class Api
             $r['status'] = $all ? 'published' : 'partial';
             if ($all) {
                 foreach ($s['versions'] as &$old) {
-                    if ($old['id'] !== $id && $old['status'] === 'published') {
+                    if ($old['id'] !== $id && ($old['plan_id'] ?? 1) === ($r['plan_id'] ?? 1) && $old['status'] === 'published') {
                         $old['status'] = 'archived';
                     }
                 }
@@ -691,7 +793,10 @@ final class Api
             }
         }
         $this->store->transaction(function (array &$s) use ($data) {
-            foreach (['accounts','targets','versions','publications','settings','events','sequences'] as $table) {
+            if (!isset($data['plans'],$data['templates'])) {
+                unset($s['plans'],$s['templates']);
+            }
+            foreach (['accounts','targets','versions','publications','settings','events','sequences','plans','templates'] as $table) {
                 if (isset($data[$table])) {
                     $s[$table] = $data[$table];
                 }
@@ -704,6 +809,11 @@ final class Api
         $this->confirmation('导入旧版');
         $key = $this->text('legacy_key', 500);
         $legacy = json_decode($this->file(20 * 1024 * 1024), true, 512, JSON_THROW_ON_ERROR);
-        return (new Importer($this->security))->run($this->store, $legacy, $key);
+        $result = (new Importer($this->security))->run($this->store, $legacy, $key);
+        $this->store->transaction(function (array &$s) {
+            unset($s['plans'],$s['templates']);
+        });
+        Plans::migrate($this->store);
+        return $result;
     }
 }
