@@ -1,0 +1,1 @@
+import{l as e}from"./staticApi-CBIDgkgc.js";import{a as t,i as n}from"./user-DExmctKh.js";var r=t=>e(`/cloud-account${t}`),i=()=>n(r(`/overview`)),a=e=>t(r(`/save`),e,!0),o=e=>t(r(`/refresh`),{id:e},!0),s=()=>t(r(`/refresh-all`),{},!0),c=e=>t(r(`/drop`),{id:e},!0);export{a,o as i,i as n,s as r,c as t};

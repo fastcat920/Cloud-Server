@@ -1,0 +1,188 @@
+/**
+ * 全局样式变量 — 对齐 fastcat-3.3.6 Flutter 客户端视觉
+ */
+
+// 给CSS变量设置初始值
+:root {
+  // 背景颜色 — 亮色模式: 微蓝灰底，暗色: 接近 M3 surface
+  --background-color: #FAFBFD;
+  --card-background: #ffffff;
+  --card-background-rgb: 255, 255, 255;
+  --theme-on-color: #ffffff;
+
+  // Material 3 switch colors (FastCatAPP light scheme)
+  --switch-track-off: #E3E7EF;
+  --switch-track-border: #8E9099;
+  --switch-thumb-off: #747780;
+  --switch-track-on: var(--theme-color);
+  --switch-thumb-on: var(--theme-on-color);
+
+  // 卡片边框与阴影 (主色淡影，对齐 XBCard)
+  --card-border: #EEF0F4;
+  --card-shadow: rgba(var(--theme-color-rgb), 0.06);
+  --card-shadow-hover: rgba(var(--theme-color-rgb), 0.12);
+
+  // FastCatAPP / XBoard design tokens
+  --surface-color: #ffffff;
+  --surface-container-low: #ffffff;
+  --dialog-background: #ffffff;
+  --dialog-section-background: #FAFBFD;
+  --dialog-border: #E8EBF0;
+  --dialog-overlay: rgba(10, 12, 18, 0.56);
+  --input-background: #F5F7FA;
+  --surface-hover: rgba(var(--theme-color-rgb), 0.06);
+  --surface-selected: rgba(var(--theme-color-rgb), 0.1);
+  --brand-border: rgba(var(--theme-color-rgb), 0.28);
+  --divider-color: #F0F2F5;
+  --tab-background: #F0F4F8;
+  --chevron-color: #BCC3CE;
+  --heading-color: #1A2138;
+  --muted-text-color: #6B7280;
+  --supporting-text-color: #4B5563;
+
+  --radius-card: 20px;
+  --radius-card-compact: 14px;
+  --radius-control: 14px;
+  --radius-chip: 10px;
+  --radius-dialog: 24px;
+
+  // Layout scale
+  --page-max-width: 1040px;
+  --page-padding-x: clamp(16px, 3vw, 32px);
+  --page-padding-y: clamp(16px, 2.5vw, 28px);
+  --section-gap: clamp(16px, 2vw, 24px);
+  --card-padding: clamp(16px, 2vw, 24px);
+  --list-gap: 12px;
+  --control-height: 48px;
+  --control-height-compact: 40px;
+
+  // Type scale: keep text readable on mobile instead of shrinking the root font size
+  --font-size-xs: 12px;
+  --font-size-sm: 14px;
+  --font-size-base: 16px;
+  --font-size-lg: 18px;
+  --font-size-xl: 20px;
+  --font-size-page-title: clamp(24px, 3vw, 30px);
+  --line-height-tight: 1.3;
+  --line-height-base: 1.6;
+
+  // Elevation, focus and motion
+  --shadow-card: 0 4px 16px var(--card-shadow);
+  --shadow-card-hover: 0 10px 28px var(--card-shadow-hover);
+  --focus-ring: 0 0 0 3px rgba(var(--theme-color-rgb), 0.22);
+  --motion-fast: 150ms;
+  --motion-base: 200ms;
+  --motion-slow: 300ms;
+
+  // 文本颜色
+  --text-color: #1A2138;
+  --text-color-rgb: 26, 33, 56;
+  --secondary-text-color: #6B7280;
+
+  // 边框和阴影
+  --border-color: #e8e8e8;
+  --shadow-color: rgba(0, 0, 0, 0.06);
+
+  // 功能色
+  --success-color: #00B42A;
+  --success-background: #E8FFEA;
+  --success-color-rgb: 0, 180, 42;
+
+  --warning-color: #FF7D00;
+  --warning-background: #FFF7E8;
+  --warning-color-rgb: 255, 125, 0;
+
+  --error-color: #F53F3F;
+  --error-background: #FFECE8;
+  --error-color-rgb: 245, 63, 63;
+
+  --info-color: #165DFF;
+  --info-background: #E8F3FF;
+  --info-color-rgb: 22, 93, 255;
+  --promotion-color: #E85D4A;
+  --promotion-background: rgba(232, 93, 74, 0.1);
+}
+
+// 黑暗模式变量 — 卡片不透明，接近 M3 surface
+body.dark-theme {
+  --background-color: #1C1C1F;
+  --card-background: #242428;
+  --card-background-rgb: 36, 36, 40;
+  --theme-on-color: #152E60;
+  // Material 3 switch colors (FastCatAPP dark scheme)
+  --switch-track-off: #45464F;
+  --switch-track-border: #8F909A;
+  --switch-thumb-off: #C5C6D0;
+  --switch-track-on: var(--theme-color);
+  --switch-thumb-on: var(--theme-on-color);
+  --surface-color: #1C1C1F;
+  --surface-container-low: #242428;
+  --dialog-background: #2C2C31;
+  --dialog-section-background: #29292E;
+  --dialog-border: rgba(255, 255, 255, 0.12);
+  --dialog-overlay: rgba(5, 5, 8, 0.72);
+  --input-background: #2C2C31;
+  --surface-hover: rgba(var(--theme-color-rgb), 0.12);
+  --surface-selected: rgba(var(--theme-color-rgb), 0.18);
+  --brand-border: rgba(var(--theme-color-rgb), 0.4);
+  --divider-color: rgba(255, 255, 255, 0.09);
+  --tab-background: #2C2C31;
+  --chevron-color: rgba(255, 255, 255, 0.42);
+  --heading-color: rgba(255, 255, 255, 0.94);
+  --muted-text-color: rgba(255, 255, 255, 0.62);
+  --supporting-text-color: rgba(255, 255, 255, 0.76);
+  --text-color: rgba(255, 255, 255, 0.9);
+  --text-color-rgb: 255, 255, 255;
+  --secondary-text-color: rgba(255, 255, 255, 0.6);
+  --border-color: rgba(255, 255, 255, 0.1);
+  --shadow-color: rgba(0, 0, 0, 0.2);
+  --card-border: rgba(255, 255, 255, 0.09);
+  --card-shadow: rgba(0, 0, 0, 0.18);
+  --card-shadow-hover: rgba(0, 0, 0, 0.26);
+  --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.18);
+  --shadow-card-hover: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+
+// 断点变量
+$breakpoints: (
+  xs: 480px,
+  sm: 576px,
+  md: 768px,
+  lg: 992px,
+  xl: 1200px
+);
+
+// 间距变量
+$spacer: 1rem;
+$spacers: (
+  0: 0,
+  1: $spacer * 0.25,
+  2: $spacer * 0.5,
+  3: $spacer,
+  4: $spacer * 1.5,
+  5: $spacer * 3,
+  6: $spacer * 4
+);
+
+// 字体变量
+$font-family-base: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+$font-size-base: 1rem;
+$font-size-sm: $font-size-base * 0.875;
+$font-size-lg: $font-size-base * 1.25;
+
+$font-weight-light: 300;
+$font-weight-normal: 400;
+$font-weight-medium: 500;
+$font-weight-semibold: 600;
+$font-weight-bold: 700;
+
+// 边框圆角 — 对齐 Flutter 客户端 (卡片 20px, 按钮/输入框 14px, 标签 10px)
+$border-radius-sm: 6px;
+$border-radius: 14px;
+$border-radius-lg: 20px;
+$border-radius-xl: 24px;
+
+// 动画时间
+$transition-time-fast: 0.2s;
+$transition-time-base: 0.3s;
+$transition-time-slow: 0.5s;

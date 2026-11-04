@@ -1,0 +1,1814 @@
+/**
+ * FastCatAPP visual parity layer.
+ *
+ * This file deliberately changes presentation only. Existing page structure,
+ * navigation positioning/behavior, customer-service layout, and dashboard
+ * content layout remain owned by their current components.
+ */
+
+@use "../base/variables.scss" as *;
+
+html,
+body,
+#app {
+  min-height: 100%;
+}
+
+body {
+  color: var(--text-color);
+  background: var(--background-color);
+  font-family: $font-family-base;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body h1,
+body h2,
+body h3,
+body h4 {
+  color: var(--heading-color);
+  letter-spacing: -0.01em;
+}
+
+body button,
+body input,
+body textarea,
+body select {
+  font: inherit;
+}
+
+/* Page surfaces. Dashboard and customer-service layout are intentionally absent. */
+body :is(
+  .shop-container,
+  .order-confirm-container,
+  .payment-container,
+  .account-container,
+  .more-container,
+  .profile-container,
+  .orders-container,
+  .ticket-container,
+  .mobile-ticket-container,
+  .docs-container,
+  .doc-detail-container,
+  .gift-container,
+  .nodes-container,
+  .trafficlog-container,
+  .deposit-container,
+  .api-validation-page,
+  .browser-restricted-container,
+  .not-found-container
+) {
+  color: var(--text-color);
+}
+
+/* Shared card language: white/surface card, subtle border, 20px radius. */
+body :is(
+  .shop-container,
+  .order-confirm-container,
+  .payment-container,
+  .account-container,
+  .more-container,
+  .profile-container,
+  .orders-container,
+  .ticket-container,
+  .mobile-ticket-container,
+  .docs-container,
+  .doc-detail-container,
+  .gift-container,
+  .nodes-container,
+  .trafficlog-container,
+  .deposit-container,
+  .api-validation-page,
+  .browser-restricted-container
+) :is(
+  .dashboard-card,
+  .plan-card,
+  .order-summary,
+  .order-info-card,
+  .payment-card,
+  .section-wrapper,
+  .balance-card,
+  .stats-card,
+  .combined-card,
+  .profile-card,
+  .welcome-card,
+  .doc-category,
+  .doc-content,
+  .error-card,
+  .balance-card,
+  .deposit-card,
+  .browser-restricted-card,
+  .validation-container
+) {
+  background: var(--card-background) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-card) !important;
+  box-shadow: 0 4px 16px var(--card-shadow) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Beat legacy page-local dark selectors without changing their structure. */
+body.dark-theme :is(
+  .shop-container,
+  .order-confirm-container,
+  .payment-container,
+  .account-container,
+  .more-container,
+  .profile-container,
+  .orders-container,
+  .ticket-container,
+  .mobile-ticket-container,
+  .docs-container,
+  .doc-detail-container,
+  .gift-container,
+  .nodes-container,
+  .trafficlog-container,
+  .deposit-container
+) :is(
+  .dashboard-card,
+  .plan-card,
+  .order-summary,
+  .order-info-card,
+  .payment-card,
+  .section-wrapper,
+  .balance-card,
+  .stats-card,
+  .combined-card,
+  .profile-card,
+  .welcome-card,
+  .doc-category,
+  .doc-content,
+  .error-card,
+  .deposit-card,
+  .order-card,
+  .ticket-item,
+  .doc-item,
+  .node-item,
+  .traffic-card
+) {
+  background: var(--card-background) !important;
+  border-color: var(--card-border) !important;
+}
+
+/* Compact cards used by order/ticket/docs/node/traffic lists. */
+body :is(
+  .orders-container,
+  .ticket-container,
+  .mobile-ticket-container,
+  .docs-container,
+  .nodes-container,
+  .trafficlog-container,
+  .account-container
+) :is(
+  .order-card,
+  .ticket-item,
+  .doc-item,
+  .node-item,
+  .traffic-card,
+  .record-item,
+  .invite-code-item
+) {
+  background: var(--card-background) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-card-compact) !important;
+  box-shadow: none !important;
+  transition: border-color 0.2s ease, background-color 0.2s ease,
+    transform 0.2s ease !important;
+}
+
+@media (hover: hover) {
+  body :is(
+    .orders-container,
+    .ticket-container,
+    .mobile-ticket-container,
+    .docs-container,
+    .nodes-container,
+    .trafficlog-container,
+    .account-container
+  ) :is(
+    .order-card,
+    .ticket-item,
+    .doc-item,
+    .node-item,
+    .traffic-card,
+    .record-item,
+    .invite-code-item
+  ):hover {
+    border-color: rgba(var(--theme-color-rgb), 0.35) !important;
+    transform: translateY(-1px);
+  }
+}
+
+/* Typography hierarchy mirrors XbUiText. */
+body :is(.page-title, .auth-title, .service-title) {
+  color: var(--heading-color) !important;
+  font-size: 20px !important;
+  font-weight: 700 !important;
+  line-height: 1.3 !important;
+}
+
+body :is(
+  .section-title,
+  .card-header h2,
+  .card-header h3,
+  .category-title,
+  .modal-header h3
+) {
+  color: var(--heading-color) !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  line-height: 1.4 !important;
+}
+
+body :is(
+  .card-title,
+  .plan-name,
+  .doc-title,
+  .node-name,
+  .ticket-subject
+) {
+  color: var(--heading-color) !important;
+  font-weight: 600 !important;
+}
+
+body :is(
+  .description,
+  .subtitle,
+  .card-subtitle,
+  .doc-date,
+  .node-host,
+  .form-hint,
+  .empty-description
+) {
+  color: var(--secondary-text-color) !important;
+}
+
+/* Controls */
+body :is(
+  .shop-container,
+  .order-confirm-container,
+  .payment-container,
+  .account-container,
+  .more-container,
+  .profile-container,
+  .orders-container,
+  .ticket-container,
+  .mobile-ticket-container,
+  .docs-container,
+  .doc-detail-container,
+  .gift-container,
+  .nodes-container,
+  .trafficlog-container,
+  .deposit-container
+) :is(input, textarea, select) {
+  color: var(--text-color) !important;
+  background: var(--input-background) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-control) !important;
+  box-shadow: none !important;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+body :is(
+  .shop-container,
+  .order-confirm-container,
+  .payment-container,
+  .account-container,
+  .more-container,
+  .profile-container,
+  .orders-container,
+  .ticket-container,
+  .mobile-ticket-container,
+  .docs-container,
+  .doc-detail-container,
+  .gift-container,
+  .nodes-container,
+  .trafficlog-container,
+  .deposit-container
+) :is(input, textarea, select):focus {
+  border-color: var(--theme-color) !important;
+  box-shadow: 0 0 0 3px rgba(var(--theme-color-rgb), 0.14) !important;
+}
+
+body :is(
+  .btn-primary:not(.tiny),
+  .submit-btn,
+  .confirm-btn,
+  .shop-button,
+  .retry-button,
+  .gift-card-btn,
+  .btn-order,
+  .send-btn,
+  .create-btn,
+  .action-primary,
+  .buy-button,
+  .pay-button,
+  .btn-purchase,
+  .btn-verify,
+  .btn-pay
+) {
+  min-height: var(--control-height) !important;
+  color: var(--theme-on-color, #fff) !important;
+  background: var(--theme-color) !important;
+  border: 1px solid var(--theme-color) !important;
+  border-radius: var(--radius-control) !important;
+  box-shadow: none !important;
+  font-weight: 600 !important;
+}
+
+/* Match FastCatAPP Material 3: light primary surface with dark onPrimary content. */
+html body.dark-theme #app :is(
+  .btn-primary,
+  .submit-btn:not(.danger),
+  .btn-submit:not(.danger),
+  .confirm-btn,
+  .shop-button,
+  .retry-button,
+  .gift-card-btn,
+  .btn-order,
+  .send-btn,
+  .send-code-btn,
+  .send-reply-btn,
+  .create-btn,
+  .action-primary,
+  .action-button.primary,
+  .buy-button,
+  .pay-button,
+  .btn-purchase,
+  .btn-verify,
+  .btn-pay,
+  .popup-action-btn,
+  .tab-btn.active,
+  .priority-btn.active,
+  .btn-reset-filter,
+  .trafficlog-container .error-state button,
+  .btn-action,
+  .pm-btn-submit,
+  .switch-btn,
+  .home-button,
+  .browser-download,
+  .subscription-action.renew:not(.warning),
+  .customer-service-icon,
+  .back-to-top
+):not(.logout-button) {
+  color: var(--theme-on-color) !important;
+  background: var(--theme-color) !important;
+  -webkit-text-fill-color: var(--theme-on-color) !important;
+}
+
+html body.dark-theme #app :is(
+  .btn-primary,
+  .submit-btn:not(.danger),
+  .btn-submit,
+  .confirm-btn,
+  .shop-button,
+  .retry-button,
+  .gift-card-btn,
+  .btn-order,
+  .send-btn,
+  .send-code-btn,
+  .send-reply-btn,
+  .create-btn,
+  .action-primary,
+  .action-button.primary,
+  .buy-button,
+  .pay-button,
+  .btn-purchase,
+  .btn-verify,
+  .btn-pay,
+  .popup-action-btn,
+  .tab-btn.active,
+  .priority-btn.active,
+  .btn-reset-filter,
+  .trafficlog-container .error-state button,
+  .btn-action,
+  .pm-btn-submit,
+  .switch-btn,
+  .home-button,
+  .browser-download,
+  .subscription-action,
+  .btn-remove-coupon,
+  .confirm-close-btn.danger,
+  .customer-service-icon,
+  .back-to-top
+):not(.logout-button) :is(svg, i, span) {
+  color: var(--theme-on-color) !important;
+}
+
+/* Colored state/action buttons keep their semantic background and use dark M3 content. */
+html body.dark-theme #app :is(
+  .subscription-action,
+  .btn-submit.danger,
+  .btn-remove-coupon,
+  .confirm-close-btn.danger
+):not(.logout-button) {
+  color: var(--theme-on-color) !important;
+  -webkit-text-fill-color: var(--theme-on-color) !important;
+}
+
+body :is(
+  .btn-outline,
+  .btn-secondary,
+  .cancel-btn,
+  .retry-button,
+  .back-button,
+  .refresh-btn,
+  .copy-btn,
+  .more-btn
+) {
+  border-radius: var(--radius-control) !important;
+}
+
+body :is(
+  .btn-primary,
+  .submit-btn,
+  .confirm-btn,
+  .shop-button,
+  .gift-card-btn,
+  .btn-order,
+  .send-btn,
+  .create-btn,
+  .action-primary,
+  .buy-button,
+  .pay-button,
+  .btn-purchase,
+  .btn-verify,
+  .btn-pay,
+  .btn-outline,
+  .btn-secondary,
+  .cancel-btn,
+  .retry-button
+):disabled {
+  cursor: not-allowed !important;
+  opacity: 0.55 !important;
+  transform: none !important;
+}
+
+/* Tabs, selectable periods and small actions. */
+body :is(.tabs, .tab-header, .tabs-container, .period-tabs, .priority-selector) {
+  border-radius: var(--radius-card-compact) !important;
+}
+
+body :is(.tab-btn, .tab-button, .period-tab, .priority-btn, .btn-chip) {
+  border-radius: var(--radius-chip) !important;
+}
+
+body :is(.tab-btn.active, .tab-button.active, .period-tab.active, .priority-btn.active) {
+  color: var(--theme-color) !important;
+}
+
+body :is(.period-card, .withdraw-method, .payment-method, .amount-option) {
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-card-compact) !important;
+  background: var(--card-background) !important;
+  box-shadow: none !important;
+}
+
+body :is(
+  .period-card.active,
+  .withdraw-method.active,
+  .payment-method.active,
+  .amount-option.active
+) {
+  border-color: var(--theme-color) !important;
+  background: rgba(var(--theme-color-rgb), 0.09) !important;
+}
+
+/* Dialogs */
+body :is(.modal-content, .modal-container, .modal-card, .password-modal, .cancel-modal-content) {
+  color: var(--text-color) !important;
+  background: var(--card-background) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-dialog) !important;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.22) !important;
+  overflow: hidden;
+}
+
+body :is(.modal-header, .modal-footer, .pm-header, .pm-footer) {
+  border-color: var(--divider-color) !important;
+  background: var(--card-background) !important;
+}
+
+body .modal-overlay {
+  background: rgba(8, 12, 20, 0.52) !important;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+/* Status / empty / loading states */
+body :is(.status-badge, .level-badge, .node-tag, .rate, .doc-category) {
+  border-radius: 999px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+}
+
+body :is(
+  .orders-empty,
+  .orders-error,
+  .empty-state,
+  .docs-empty,
+  .docs-error,
+  .nodes-empty,
+  .nodes-error,
+  .status-message,
+  .error-state
+) {
+  color: var(--secondary-text-color) !important;
+}
+
+/* Authentication pages */
+body :is(
+  .auth-container,
+  .login-view-container,
+  .register-view-container,
+  .forgot-password-view-container
+) .auth-card {
+  background: var(--card-background) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-card) !important;
+  box-shadow: 0 4px 16px var(--card-shadow) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body :is(
+  .auth-container,
+  .login-view-container,
+  .register-view-container,
+  .forgot-password-view-container
+) :is(input, textarea, select) {
+  min-height: var(--control-height) !important;
+  color: var(--text-color) !important;
+  background: var(--input-background) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-control) !important;
+  box-shadow: none !important;
+}
+
+body :is(
+  .auth-container,
+  .login-view-container,
+  .register-view-container,
+  .forgot-password-view-container
+) :is(input, textarea, select):focus {
+  border-color: var(--theme-color) !important;
+  box-shadow: 0 0 0 3px rgba(var(--theme-color-rgb), 0.14) !important;
+}
+
+body :is(
+  .auth-container,
+  .login-view-container,
+  .register-view-container,
+  .forgot-password-view-container
+) .btn-primary {
+  width: 100%;
+}
+
+/* Existing navigation layout is preserved; only its material treatment changes. */
+body .slide-tabs-container .slide-tabs-wrapper {
+  background: rgba(var(--card-background-rgb), 0.92) !important;
+  border-color: var(--card-border) !important;
+  box-shadow: 0 4px 16px var(--card-shadow) !important;
+  backdrop-filter: blur(18px) !important;
+  -webkit-backdrop-filter: blur(18px) !important;
+}
+
+body .slide-tabs-container .nav-item {
+  color: var(--secondary-text-color) !important;
+}
+
+body .slide-tabs-container .nav-item.active {
+  color: var(--heading-color) !important;
+}
+
+body .slide-tabs-container .slider-indicator {
+  background: rgba(var(--theme-color-rgb), 0.10) !important;
+  border-color: rgba(var(--theme-color-rgb), 0.48) !important;
+  box-shadow: none !important;
+}
+
+/* Customer-service structure/placement stays untouched. */
+body .customer-service-icon {
+  background: var(--theme-color) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 6px 18px rgba(var(--theme-color-rgb), 0.28) !important;
+}
+
+body .customer-service-container .service-header {
+  background: var(--card-background) !important;
+  border-bottom: 1px solid var(--card-border);
+  box-shadow: none !important;
+}
+
+body .customer-service-container :is(.back-button, .refresh-button) {
+  color: var(--theme-color) !important;
+  background: rgba(var(--theme-color-rgb), 0.09) !important;
+  border-radius: var(--radius-chip) !important;
+}
+
+/*
+ * Vue scoped styles add data attributes to every selector. The #app anchor
+ * gives the shared system a stable precedence over legacy page-local rules
+ * that still use !important, without editing page structure.
+ */
+body #app :is(
+  .shop-container,
+  .order-confirm-container,
+  .payment-container,
+  .account-container,
+  .more-container,
+  .profile-container,
+  .orders-container,
+  .ticket-container,
+  .mobile-ticket-container,
+  .docs-container,
+  .doc-detail-container,
+  .gift-container,
+  .nodes-container,
+  .trafficlog-container,
+  .deposit-container,
+  .api-validation-page,
+  .browser-restricted-container
+) :is(
+  .dashboard-card,
+  .plan-card,
+  .order-summary,
+  .order-info-card,
+  .payment-card,
+  .section-wrapper,
+  .balance-card,
+  .stats-card,
+  .combined-card,
+  .profile-card,
+  .welcome-card,
+  .doc-category,
+  .doc-content,
+  .error-card,
+  .deposit-card,
+  .browser-restricted-card,
+  .validation-container
+) {
+  background: var(--card-background) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-card) !important;
+  box-shadow: 0 4px 16px var(--card-shadow) !important;
+}
+
+/* Second-pass list surfaces: match the compact Card + ListTile language. */
+body #app .more-container .unified-card {
+  background: var(--card-background) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-card) !important;
+  box-shadow: 0 4px 16px var(--card-shadow) !important;
+}
+
+body #app :is(
+  .more-container .more-inner,
+  .orders-container .orders-inner,
+  .docs-container .docs-inner,
+  .nodes-container .nodes-inner,
+  .trafficlog-container .trafficlog-inner,
+  .profile-container .profile-inner
+) {
+  width: 100%;
+  max-width: 900px;
+  margin-right: auto;
+  margin-left: auto;
+}
+
+body #app :is(
+  .orders-container .order-cards,
+  .nodes-container .node-items,
+  .trafficlog-container .traffic-cards
+) {
+  gap: var(--list-gap) !important;
+}
+
+body #app .docs-container .doc-category {
+  margin-bottom: var(--list-gap);
+  overflow: hidden;
+}
+
+body #app .docs-container .doc-category .category-title {
+  margin: 0 !important;
+  padding: 14px 16px !important;
+  border-bottom: 1px solid var(--divider-color) !important;
+}
+
+body #app .docs-container .doc-items {
+  display: flex !important;
+  flex-direction: column;
+  gap: 0 !important;
+}
+
+body #app .docs-container .doc-item {
+  min-height: 64px;
+  margin: 0 !important;
+  padding: 12px 16px !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+body #app .docs-container .doc-item + .doc-item {
+  border-top: 1px solid var(--divider-color) !important;
+}
+
+/* Page chunks are injected after the global bundle; keep these row rules final. */
+html body #app .docs-container .doc-category .doc-items > .doc-item {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+html body #app .docs-container .doc-category .doc-items > .doc-item + .doc-item {
+  border-top: 1px solid var(--divider-color) !important;
+}
+
+body #app :is(
+  .docs-container .doc-action,
+  .more-container .menu-arrow,
+  .profile-container .password-row-chevron
+) {
+  color: var(--chevron-color) !important;
+}
+
+body #app :is(
+  .orders-container .pagination,
+  .account-container .pagination,
+  .ticket-container .pagination
+) {
+  background: var(--card-background) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-card-compact) !important;
+  box-shadow: none !important;
+}
+
+body #app :is(
+  .orders-container .page-button,
+  .account-container .page-button,
+  .ticket-container .page-button,
+  .nodes-container .more-btn
+) {
+  border-radius: var(--radius-chip) !important;
+}
+
+@media (max-width: 767px) {
+  body #app :is(
+    .more-container,
+    .orders-container,
+    .docs-container,
+    .nodes-container,
+    .trafficlog-container,
+    .profile-container
+  ) {
+    padding: var(--page-padding-y) var(--page-padding-x) 80px !important;
+  }
+}
+
+/* Targeted dark surfaces still owned by legacy page-level !important rules. */
+html body.dark-theme #app .dashboard-container .dashboard-card {
+  background: var(--card-background) !important;
+  border-color: var(--card-border) !important;
+  box-shadow: none !important;
+}
+
+html body.dark-theme #app .account-container .invite-codes-list > .invite-code-item {
+  background: var(--card-background) !important;
+  border-color: var(--card-border) !important;
+  box-shadow: none !important;
+}
+
+html body.dark-theme #app .client-subscription-card {
+  background: var(--card-background) !important;
+  border-color: var(--card-border) !important;
+  box-shadow: none !important;
+}
+
+/* Dashboard keeps the client subscription card visually separated from downloads. */
+body #app .dashboard-container .client-subscription-card {
+  margin-bottom: 20px;
+}
+
+/* FastCatAPP uses zero card elevation in dark mode. */
+html body.dark-theme #app :is(
+  .shop-container,
+  .order-confirm-container,
+  .payment-container,
+  .account-container,
+  .more-container,
+  .profile-container,
+  .orders-container,
+  .ticket-container,
+  .mobile-ticket-container,
+  .docs-container,
+  .doc-detail-container,
+  .gift-container,
+  .nodes-container,
+  .trafficlog-container,
+  .deposit-container
+) :is(
+  .dashboard-card,
+  .plan-card,
+  .order-card,
+  .payment-card,
+  .profile-card,
+  .unified-card,
+  .doc-category,
+  .doc-item,
+  .node-item,
+  .traffic-card,
+  .ticket-item
+) {
+  background: var(--card-background) !important;
+  border-color: var(--card-border) !important;
+  box-shadow: none !important;
+}
+
+/* Shop: use the same compact hierarchy as FastCatAPP plan cards. */
+body #app .shop-container .plans-wrapper {
+  gap: 16px !important;
+}
+
+body #app .shop-container .plan-card {
+  padding: 16px !important;
+  transition: border-color 0.2s ease, transform 0.2s ease !important;
+}
+
+body #app .shop-container .plan-card:hover {
+  transform: translateY(-1px) !important;
+}
+
+body #app .shop-container .plan-card .card-header {
+  margin-bottom: 8px !important;
+}
+
+body #app .shop-container .plan-card .price-display {
+  height: auto !important;
+  margin-bottom: 0 !important;
+  text-align: left !important;
+}
+
+body #app .shop-container .plan-card .price-display .currency {
+  color: var(--theme-color) !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+}
+
+body #app .shop-container .plan-card .price-display .amount {
+  color: var(--theme-color) !important;
+  font-size: 28px !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+}
+
+body #app .shop-container .plan-card .price-display .period {
+  font-size: 14px !important;
+}
+
+body #app .shop-container .plan-card .plan-features {
+  align-items: stretch !important;
+  margin: 16px 0 8px !important;
+  padding: 0 !important;
+}
+
+body #app .shop-container .plan-card .feature-item {
+  margin-bottom: 8px !important;
+}
+
+body #app .shop-container .plan-card .btn-purchase {
+  width: 100%;
+  min-height: var(--control-height) !important;
+  border: 1px solid var(--theme-color) !important;
+  border-radius: var(--radius-control) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+/* Purchase and payment controls. */
+body #app :is(.order-confirm-container, .payment-container) :is(
+  .btn-back,
+  .btn-order,
+  .btn-verify,
+  .btn-remove-coupon,
+  .btn-pay,
+  .btn-check
+) {
+  min-height: var(--control-height) !important;
+  border-radius: var(--radius-control) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+body #app .order-confirm-container .period-card {
+  border-width: 1px !important;
+  transform: none !important;
+}
+
+body #app .order-confirm-container .period-card .period-card-inner {
+  min-height: 68px !important;
+  background: var(--card-background) !important;
+}
+
+body #app .order-confirm-container .period-card.active .period-card-inner {
+  background: rgba(var(--theme-color-rgb), 0.09) !important;
+}
+
+body #app :is(.order-confirm-container, .payment-container) :is(
+  .order-summary,
+  .section-wrapper,
+  .payment-method-item
+) {
+  box-shadow: none !important;
+}
+
+body #app .payment-container .payment-method-item {
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-card-compact) !important;
+  background: var(--card-background) !important;
+}
+
+/* Invite: compact stat cards and chip-sized secondary actions. */
+body #app .account-container .stats-grid {
+  gap: var(--list-gap) !important;
+}
+
+body #app .account-container .stats-card {
+  min-height: 88px;
+  padding: 14px 16px !important;
+  box-shadow: none !important;
+}
+
+body #app .account-container :is(.tab-btn, .btn-action) {
+  min-height: 36px;
+  border-radius: var(--radius-chip) !important;
+}
+
+body #app .account-container .btn-action {
+  color: var(--theme-color) !important;
+  background: rgba(var(--theme-color-rgb), 0.10) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+body #app .account-container .combined-card .tab-header {
+  border-bottom-color: var(--divider-color) !important;
+}
+
+body #app .account-container .invite-code-item {
+  min-height: 64px;
+  padding: 12px 16px !important;
+}
+
+body #app .account-container .combined-card .tab-buttons {
+  display: grid !important;
+  width: 100% !important;
+  grid-template-columns: repeat(2, minmax(140px, 1fr)) !important;
+}
+
+body #app .account-container .combined-card .tab-btn {
+  width: 100% !important;
+  padding-right: 28px !important;
+  padding-left: 28px !important;
+}
+
+body #app .account-container .invite-code-item .btn-primary.tiny {
+  min-height: 26px !important;
+  height: 26px !important;
+  padding: 2px 8px !important;
+  line-height: 1 !important;
+}
+
+/* Shop notice follows the shared dialog treatment. */
+body #app .shop-popup-overlay {
+  background: rgba(8, 12, 20, 0.52) !important;
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+}
+
+body #app .shop-popup-container {
+  background: var(--card-background) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-dialog) !important;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.22) !important;
+}
+
+body #app :is(.shop-popup-header, .shop-popup-footer) {
+  background: var(--card-background) !important;
+  border-color: var(--divider-color) !important;
+}
+
+body #app .shop-popup-content {
+  background: transparent !important;
+}
+
+body #app .shop-popup-container .popup-close-btn {
+  width: 36px;
+  height: 36px;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: var(--radius-chip) !important;
+}
+
+body #app .shop-popup-container .popup-action-btn {
+  min-height: var(--control-height) !important;
+  padding: 0 18px !important;
+  border-radius: var(--radius-control) !important;
+  box-shadow: none !important;
+  font-weight: 600 !important;
+  transform: none !important;
+}
+
+@media (max-width: 767px) {
+  body #app .shop-container {
+    padding: var(--page-padding-y) var(--page-padding-x) 80px !important;
+  }
+
+  body #app .shop-container .plan-card {
+    padding: 20px !important;
+  }
+
+  body #app :is(.order-confirm-container, .payment-container) .action-buttons {
+    gap: 10px !important;
+    margin: 20px 0 24px !important;
+  }
+}
+
+
+body #app :is(
+  .orders-container,
+  .ticket-container,
+  .mobile-ticket-container,
+  .docs-container,
+  .nodes-container,
+  .trafficlog-container,
+  .account-container
+) :is(.order-card, .ticket-item, .doc-item, .node-item, .traffic-card, .record-item) {
+  background: var(--card-background) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-card-compact) !important;
+  box-shadow: none !important;
+}
+
+body #app :is(
+  .auth-container,
+  .login-view-container,
+  .register-view-container,
+  .forgot-password-view-container
+) .auth-card {
+  background: var(--card-background) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-card) !important;
+  box-shadow: 0 4px 16px var(--card-shadow) !important;
+}
+
+body #app :is(
+  .auth-container,
+  .login-view-container,
+  .register-view-container,
+  .forgot-password-view-container,
+  .shop-container,
+  .order-confirm-container,
+  .payment-container,
+  .account-container,
+  .more-container,
+  .profile-container,
+  .ticket-container,
+  .mobile-ticket-container,
+  .gift-container,
+  .deposit-container
+) :is(input, textarea, select) {
+  color: var(--text-color) !important;
+  background: var(--input-background) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-control) !important;
+  box-shadow: none !important;
+}
+
+body #app :is(.modal-content, .modal-container, .modal-card, .password-modal, .cancel-modal-content) {
+  color: var(--text-color) !important;
+  background: var(--dialog-background) !important;
+  border: 1px solid var(--dialog-border) !important;
+  border-radius: var(--radius-dialog) !important;
+}
+
+/* Dark dialogs use one elevated surface instead of page-specific blue/black backgrounds. */
+html body.dark-theme #app :is(
+  .modal-overlay,
+  .notice-modal-overlay,
+  .auth-popup-overlay,
+  .shop-popup-overlay,
+  .ticket-popup-overlay,
+  .node-detail-modal-overlay,
+  .cancel-modal-overlay,
+  .captcha-modal-overlay,
+  .modal-backdrop
+) {
+  background: var(--dialog-overlay) !important;
+  backdrop-filter: blur(6px) !important;
+}
+
+html body.dark-theme #app :is(
+  .modal-content,
+  .modal-card,
+  .password-modal,
+  .reset-traffic-modal,
+  .notice-modal,
+  .auth-popup-container,
+  .shop-popup-container,
+  .ticket-popup-container,
+  .node-detail-modal-container,
+  .cancel-modal-content,
+  .captcha-modal-content,
+  .account-container .modal-container
+) {
+  color: var(--text-color) !important;
+  background: var(--dialog-background) !important;
+  border-color: var(--dialog-border) !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.42) !important;
+}
+
+html body.dark-theme #app :is(
+  .modal-content,
+  .modal-card,
+  .password-modal,
+  .reset-traffic-modal,
+  .notice-modal,
+  .auth-popup-container,
+  .shop-popup-container,
+  .ticket-popup-container,
+  .node-detail-modal-container,
+  .cancel-modal-content,
+  .captcha-modal-content,
+  .account-container .modal-container
+) :is(
+  .modal-header,
+  .modal-footer,
+  .notice-modal-header,
+  .notice-modal-footer,
+  .auth-popup-header,
+  .auth-popup-footer,
+  .shop-popup-header,
+  .shop-popup-footer,
+  .ticket-popup-header,
+  .ticket-popup-footer,
+  .node-detail-modal-header
+) {
+  background: var(--dialog-section-background) !important;
+  border-color: var(--dialog-border) !important;
+}
+
+html body.dark-theme #app :is(
+  .modal-content,
+  .modal-card,
+  .password-modal,
+  .reset-traffic-modal,
+  .notice-modal,
+  .auth-popup-container,
+  .shop-popup-container,
+  .ticket-popup-container,
+  .node-detail-modal-container,
+  .cancel-modal-content,
+  .captcha-modal-content,
+  .account-container .modal-container
+) :is(
+  .modal-body,
+  .notice-modal-content,
+  .auth-popup-content,
+  .shop-popup-content,
+  .ticket-popup-content,
+  .node-detail-modal-body
+) {
+  background: var(--dialog-background) !important;
+}
+
+@media (max-width: 768px) {
+  body :is(
+    .shop-container,
+    .order-confirm-container,
+    .payment-container,
+    .account-container,
+    .more-container,
+    .profile-container,
+    .orders-container,
+    .ticket-container,
+    .mobile-ticket-container,
+    .docs-container,
+    .doc-detail-container,
+    .gift-container,
+    .nodes-container,
+    .trafficlog-container,
+    .deposit-container
+  ) {
+    --page-padding-x: 16px;
+    --page-padding-y: 12px;
+  }
+
+  body :is(.modal-content, .modal-container, .modal-card, .password-modal) {
+    border-radius: var(--radius-dialog) var(--radius-dialog) 0 0 !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body *,
+  body *::before,
+  body *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/*
+ * FastCat high-frequency service surfaces.
+ * These rules keep the main authenticated pages on the same content boundary
+ * and provide the grouped-card hierarchy used by the native client.
+ */
+body #app :is(
+  .dashboard-container,
+  .account-container,
+  .shop-container,
+  .orders-container,
+  .profile-container,
+  .more-container
+) {
+  width: 100%;
+  box-sizing: border-box;
+  padding: clamp(12px, 2vw, 28px) max(16px, env(safe-area-inset-right))
+    calc(108px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+
+@media (min-width: 769px) {
+  body #app :is(.dashboard-container, .account-container, .shop-container, .orders-container, .profile-container, .more-container) {
+    padding-bottom: 40px;
+  }
+}
+
+body #app :is(.dashboard-inner, .account-inner, .shop-inner, .orders-inner, .profile-inner, .more-inner) {
+  max-width: var(--page-max-width) !important;
+}
+
+/* Invitation: balances first, clear actions second, records last. */
+body #app .account-container .invite-balance-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+body #app .account-container .invite-balance-card {
+  min-width: 0;
+  padding: 18px !important;
+  color: var(--heading-color) !important;
+  background: var(--card-background) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-card) !important;
+  box-shadow: 0 4px 16px var(--card-shadow) !important;
+}
+
+body #app .account-container .balance-card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--secondary-text-color) !important;
+  font-size: 13px !important;
+  font-weight: 600;
+}
+
+body #app .account-container .balance-value {
+  margin-top: 8px;
+  overflow: hidden;
+  color: var(--heading-color) !important;
+  font-size: clamp(22px, 3vw, 30px) !important;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700 !important;
+  letter-spacing: -0.03em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body #app .account-container .invite-primary-actions,
+body #app .account-container .invite-left-actions {
+  display: flex;
+  gap: 10px;
+}
+
+body #app .account-container .invite-primary-actions {
+  margin-bottom: 28px;
+}
+
+body #app .account-container .invite-primary-actions .btn-primary {
+  display: inline-flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 16px !important;
+}
+
+body #app .account-container .invite-section-title,
+body #app .more-container .section-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px !important;
+  color: var(--heading-color) !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+}
+
+body #app .account-container .stats-grid {
+  gap: 12px !important;
+  margin-bottom: 20px !important;
+}
+
+body #app .account-container .stats-grid .stats-card {
+  min-height: 76px;
+  padding: 14px !important;
+  background: var(--card-background) !important;
+  border-color: var(--card-border) !important;
+  border-radius: var(--radius-card-compact) !important;
+  box-shadow: none !important;
+}
+
+body #app .account-container .combined-card {
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+body #app .account-container .combined-card .tab-header {
+  padding: 8px !important;
+  border-bottom: 1px solid var(--divider-color) !important;
+}
+
+body #app .account-container .combined-card .tab-buttons {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px !important;
+  padding: 4px;
+  background: var(--tab-background);
+  border-radius: var(--radius-card-compact);
+}
+
+body #app .account-container .combined-card .tab-btn {
+  min-height: 40px;
+  padding: 0 10px !important;
+  border-radius: var(--radius-chip) !important;
+}
+
+body #app .account-container .combined-card .tab-btn::after {
+  display: none !important;
+}
+
+body #app .account-container .combined-card .tab-btn.active {
+  color: var(--theme-on-color) !important;
+  background: var(--theme-color) !important;
+}
+
+body #app .account-container .combined-card .card-body {
+  padding: 16px !important;
+}
+
+body #app .account-container .invite-code-item {
+  gap: 12px !important;
+  padding: 14px !important;
+  background: var(--input-background) !important;
+  border-color: var(--card-border) !important;
+  border-radius: var(--radius-card-compact) !important;
+}
+
+/* Purchase: equal-height cards and an action that stays in the same place. */
+body #app .shop-container .plans-wrapper {
+  gap: 16px !important;
+}
+
+body #app .shop-container .plan-card {
+  display: flex !important;
+  min-height: 100%;
+  padding: 20px !important;
+  background: var(--card-background) !important;
+  border-color: var(--card-border) !important;
+  border-radius: var(--radius-card) !important;
+  box-shadow: 0 4px 16px var(--card-shadow) !important;
+}
+
+body #app .shop-container .plan-card:hover {
+  transform: translateY(-2px) !important;
+  border-color: rgba(var(--theme-color-rgb), .32) !important;
+}
+
+body #app .shop-container .plan-card .card-body {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+body #app .shop-container .plan-card .btn-purchase {
+  min-height: var(--control-height) !important;
+  margin-top: 20px !important;
+  border-radius: var(--radius-control) !important;
+  box-shadow: none !important;
+}
+
+body #app .shop-container .plan-metric {
+  min-height: 68px;
+  justify-content: center;
+  border: 1px solid rgba(var(--theme-color-rgb), .08);
+}
+
+/* Orders and account settings adopt the native grouped-list rhythm. */
+body #app .orders-container .order-cards {
+  display: grid;
+  gap: 10px;
+}
+
+body #app .orders-container .order-card {
+  min-height: 84px;
+  padding: 14px 16px !important;
+  background: var(--card-background) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-card-compact) !important;
+  box-shadow: none !important;
+}
+
+body #app .orders-container .order-name {
+  color: var(--heading-color) !important;
+  font-size: 15px !important;
+  font-weight: 650 !important;
+}
+
+body #app .orders-container .price,
+body #app .orders-container .detail-item {
+  font-variant-numeric: tabular-nums;
+}
+
+body #app .profile-container .profile-card,
+body #app .more-container .unified-card,
+body #app .more-container .dashboard-card {
+  background: var(--card-background) !important;
+  border-color: var(--card-border) !important;
+  box-shadow: 0 4px 16px var(--card-shadow) !important;
+}
+
+body #app .profile-container .profile-card,
+body #app .more-container .unified-card {
+  border-radius: var(--radius-card) !important;
+}
+
+body #app .profile-container .setting-item,
+body #app .profile-container .password-row,
+body #app .more-container .menu-item {
+  min-height: 56px;
+}
+
+body #app .profile-container .setting-item:focus-within,
+body #app .profile-container .password-row:focus-visible,
+body #app .more-container .menu-item:focus-visible {
+  outline: 3px solid rgba(var(--theme-color-rgb), .18);
+  outline-offset: -3px;
+}
+
+@media (max-width: 640px) {
+  body #app .account-container .invite-left-actions {
+    flex-direction: column;
+  }
+
+  body #app .account-container .invite-balance-grid,
+  body #app .account-container .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  body #app .account-container .invite-code-item {
+    align-items: center;
+    flex-wrap: nowrap !important;
+  }
+
+  body #app .account-container .invite-code-item .code-actions {
+    display: flex;
+    width: auto;
+    flex: 0 0 auto;
+    gap: 4px;
+  }
+
+  body #app .account-container .invite-code-item .tiny {
+    width: auto;
+    min-width: 0;
+    min-height: 30px;
+    padding: 0 6px !important;
+  }
+
+  body #app .shop-container .plan-metrics {
+    gap: 8px !important;
+  }
+
+  body #app .orders-container .order-card {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+
+  body #app .orders-container .order-chevron {
+    display: none;
+  }
+}
+
+/* Remaining service surfaces: one client-derived system for every route. */
+body #app :is(
+  .nodes-container,
+  .ticket-container,
+  .mobile-ticket-container,
+  .docs-container,
+  .doc-detail-container,
+  .deposit-container,
+  .gift-container,
+  .trafficlog-container,
+  .login-view-container,
+  .register-view-container,
+  .forgot-password-view-container,
+  .auth-container
+) {
+  box-sizing: border-box;
+  padding: clamp(12px, 2vw, 28px) max(16px, env(safe-area-inset-right))
+    calc(108px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+
+body #app :is(
+  .nodes-inner,
+  .ticket-list-container,
+  .mobile-ticket-container > .ticket-list,
+  .docs-inner,
+  .doc-detail-inner,
+  .deposit-inner,
+  .gift-inner,
+  .trafficlog-inner
+) {
+  width: 100%;
+  max-width: var(--page-max-width) !important;
+  margin-inline: auto;
+}
+
+/* Node list: use the native compact-list information hierarchy. */
+body #app .nodes-container .node-items,
+body #app .trafficlog-container .traffic-cards,
+body #app .docs-container .doc-items {
+  display: grid;
+  gap: 10px;
+}
+
+body #app .nodes-container .node-item,
+body #app .trafficlog-container .traffic-card,
+body #app .docs-container .doc-item {
+  min-height: 72px;
+  padding: 14px 16px !important;
+  background: var(--card-background) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-card-compact) !important;
+  box-shadow: none !important;
+}
+
+body #app .nodes-container .node-item:hover,
+body #app .docs-container .doc-item:hover {
+  border-color: rgba(var(--theme-color-rgb), .34) !important;
+  transform: none !important;
+}
+
+body #app .nodes-container .node-name,
+body #app .docs-container .doc-title,
+body #app .ticket-container .ticket-subject,
+body #app .mobile-ticket-container .ticket-subject {
+  color: var(--heading-color) !important;
+  font-size: 15px !important;
+  font-weight: 650 !important;
+}
+
+body #app .nodes-container .status-indicator,
+body #app .nodes-container .node-tag,
+body #app .nodes-container .rate,
+body #app .trafficlog-container .multiplier {
+  border-radius: 999px !important;
+}
+
+/* Ticket: one surface language for desktop conversations and mobile cards. */
+body #app :is(.ticket-container, .mobile-ticket-container) :is(
+  .ticket-list-container,
+  .ticket-sidebar,
+  .ticket-content,
+  .ticket-detail,
+  .ticket-item,
+  .ticket-card,
+  .reply-container,
+  .reply-box,
+  .detail-header
+) {
+  background: var(--card-background) !important;
+  border-color: var(--card-border) !important;
+}
+
+body #app :is(.ticket-container, .mobile-ticket-container) :is(.ticket-sidebar, .ticket-content, .ticket-detail) {
+  border-radius: var(--radius-card) !important;
+  box-shadow: 0 4px 16px var(--card-shadow) !important;
+}
+
+body #app :is(.ticket-container, .mobile-ticket-container) :is(.ticket-item, .ticket-card) {
+  min-height: 76px;
+  padding: 14px !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-card-compact) !important;
+  box-shadow: none !important;
+}
+
+body #app :is(.ticket-container, .mobile-ticket-container) :is(.ticket-item.active, .ticket-card.active) {
+  background: rgba(var(--theme-color-rgb), .08) !important;
+  border-color: rgba(var(--theme-color-rgb), .36) !important;
+}
+
+body #app :is(.ticket-container, .mobile-ticket-container) :is(.message-content, .message-text) {
+  border-radius: var(--radius-card-compact) !important;
+}
+
+body #app :is(.ticket-container, .mobile-ticket-container) textarea {
+  min-height: 96px;
+  padding: 12px !important;
+  background: var(--input-background) !important;
+  border-color: var(--card-border) !important;
+  border-radius: var(--radius-control) !important;
+}
+
+/* Documentation: reading should feel like a client detail page, not a website. */
+body #app .docs-container .search-input-wrapper {
+  min-height: var(--control-height);
+  background: var(--input-background) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-control) !important;
+  box-shadow: none !important;
+}
+
+body #app .docs-container .doc-category,
+body #app .doc-detail-container .doc-content {
+  padding: 16px !important;
+  background: var(--card-background) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-card) !important;
+  box-shadow: 0 4px 16px var(--card-shadow) !important;
+}
+
+body #app .docs-container .doc-category + .doc-category {
+  margin-top: 16px;
+}
+
+body #app .doc-detail-container .doc-header {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--divider-color);
+}
+
+body #app .doc-detail-container .doc-body {
+  color: var(--text-color);
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+body #app .doc-detail-container .doc-body :is(pre, code) {
+  border-radius: var(--radius-chip);
+}
+
+/* Money and redemption flows share the native form-card sequence. */
+body #app :is(.deposit-container, .gift-container) :is(
+  .wallet-summary-card,
+  .dashboard-card,
+  .deposit-card,
+  .redemption-card,
+  .instruction-card
+) {
+  padding: 16px !important;
+  background: var(--card-background) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-card) !important;
+  box-shadow: 0 4px 16px var(--card-shadow) !important;
+}
+
+body #app :is(.deposit-container, .gift-container) .period-card,
+body #app :is(.deposit-container, .gift-container) .redemption-table-wrap {
+  background: var(--input-background) !important;
+  border-color: var(--card-border) !important;
+  border-radius: var(--radius-card-compact) !important;
+}
+
+body #app :is(.deposit-container, .gift-container) :is(.btn-order, .gift-card-btn) {
+  min-height: var(--control-height) !important;
+  border-radius: var(--radius-control) !important;
+}
+
+body #app .gift-container .redemption-table {
+  border-collapse: separate;
+  border-spacing: 0 8px;
+}
+
+body #app .gift-container .redemption-table :is(td, th) {
+  padding: 10px 12px !important;
+}
+
+/* Uniform error, empty and loading surfaces. */
+body #app :is(
+  .nodes-loading, .nodes-error, .nodes-empty,
+  .orders-loading, .orders-error, .orders-empty,
+  .docs-loading, .docs-error, .docs-empty,
+  .status-message, .record-state, .empty-state,
+  .ticket-loading, .loading-state, .no-selection
+) {
+  min-height: 220px;
+  padding: 24px !important;
+  color: var(--secondary-text-color) !important;
+  background: var(--card-background) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius-card) !important;
+  box-sizing: border-box;
+}
+
+/* Authentication keeps the native input/button density even though web has
+ * additional register/recovery routes. */
+body #app :is(.login-view-container, .register-view-container, .forgot-password-view-container, .auth-container) .auth-card {
+  width: min(100%, 440px);
+  padding: clamp(20px, 4vw, 32px) !important;
+  border-radius: var(--radius-dialog) !important;
+}
+
+body #app :is(.login-view-container, .register-view-container, .forgot-password-view-container, .auth-container) :is(.submit-btn, .login-button, .register-button) {
+  min-height: var(--control-height) !important;
+  border-radius: var(--radius-control) !important;
+}
+
+/* Every confirm/form modal follows the same 24px native dialog surface. */
+body #app :is(.modal-overlay, .custom-modal .modal-overlay, .ticket-popup-overlay) {
+  background: var(--dialog-overlay) !important;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+body #app :is(.modal-container, .modal-content, .password-modal, .ticket-popup-container, .node-detail-modal-container) {
+  max-width: min(560px, calc(100vw - 32px)) !important;
+  background: var(--dialog-background) !important;
+  border: 1px solid var(--dialog-border) !important;
+  border-radius: var(--radius-dialog) !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .28) !important;
+}
+
+body #app :is(.modal-header, .pm-header, .ticket-popup-header, .node-detail-modal-header) {
+  padding: 16px 20px !important;
+  background: var(--dialog-section-background) !important;
+  border-color: var(--divider-color) !important;
+}
+
+body #app :is(.modal-footer, .pm-footer, .ticket-popup-footer) {
+  display: flex;
+  gap: 10px;
+  padding: 16px 20px !important;
+  background: var(--dialog-section-background) !important;
+  border-color: var(--divider-color) !important;
+}
+
+@media (min-width: 769px) {
+  body #app :is(
+    .nodes-container, .ticket-container, .mobile-ticket-container,
+    .docs-container, .doc-detail-container, .deposit-container,
+    .gift-container, .trafficlog-container
+  ) {
+    padding-bottom: 40px;
+  }
+}
+
+@media (max-width: 640px) {
+  body #app :is(.ticket-container, .mobile-ticket-container) .ticket-list-container {
+    display: block !important;
+  }
+
+  body #app .ticket-container .ticket-content {
+    margin-top: 12px;
+  }
+
+  body #app :is(.deposit-container, .gift-container) .period-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  body #app .gift-container .redemption-table-wrap {
+    overflow-x: auto;
+  }
+
+  body #app :is(.ticket-container, .mobile-ticket-container) :is(.reply-container, .reply-box) {
+    position: sticky;
+    bottom: calc(76px + env(safe-area-inset-bottom));
+    z-index: 2;
+  }
+
+  body #app :is(.modal-container, .modal-content, .password-modal, .ticket-popup-container) {
+    width: calc(100vw - 24px) !important;
+    max-width: none !important;
+    max-height: min(82dvh, 720px);
+    overflow: auto;
+  }
+}

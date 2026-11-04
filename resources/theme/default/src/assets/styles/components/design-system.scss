@@ -1,0 +1,740 @@
+/**
+ * Default theme design system.
+ *
+ * This is the stable visual contract for shared page shells, cards, controls and
+ * states. Page-scoped styles should own layout exceptions, not redefine these
+ * primitives.
+ */
+
+@use "sass:map";
+@use "../base/variables.scss" as *;
+
+/* Consistent page rhythm for the main authenticated surfaces. */
+body #app :is(
+  .dashboard-inner,
+  .shop-inner,
+  .order-confirm-inner,
+  .payment-inner,
+  .account-inner,
+  .more-inner,
+  .profile-inner,
+  .orders-inner,
+  .ticket-inner,
+  .docs-inner,
+  .gift-inner,
+  .deposit-inner
+) {
+  width: min(100%, var(--page-max-width));
+  margin-inline: auto;
+  padding-inline: var(--page-padding-x);
+}
+
+/* Shared content hierarchy. */
+body #app :is(.page-title, .view-title, .main-title) {
+  margin: 0;
+  color: var(--heading-color);
+  font-size: var(--font-size-page-title);
+  font-weight: 700;
+  line-height: var(--line-height-tight);
+  letter-spacing: -0.025em;
+}
+
+body #app :is(.section-heading, .invite-section-title, .section-title) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: var(--section-gap) 0 12px;
+  color: var(--heading-color);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  line-height: var(--line-height-tight);
+}
+
+body #app :is(.card-title, .modal-title, .popup-title) {
+  color: var(--heading-color);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  line-height: var(--line-height-tight);
+}
+
+body #app :is(.card-subtitle, .section-description, .form-hint, .empty-description) {
+  color: var(--secondary-text-color);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-base);
+}
+
+/* Shared surfaces. Specific cards can still provide their own internal grid. */
+body #app :is(
+  .dashboard-card,
+  .plan-card,
+  .profile-card,
+  .wallet-summary-card,
+  .invite-balance-card,
+  .growth-level-card,
+  .combined-card,
+  .deposit-card,
+  .unified-card
+) {
+  color: var(--text-color);
+  border-color: var(--card-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  body #app :is(.plan-card, .welcome-card, .doc-item, .order-card, .menu-item) {
+    transition: border-color var(--motion-base) ease, box-shadow var(--motion-base) ease,
+      transform var(--motion-base) ease, background-color var(--motion-base) ease;
+  }
+
+  body #app :is(.plan-card, .welcome-card, .doc-item, .order-card):hover {
+    border-color: rgba(var(--theme-color-rgb), 0.24);
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-2px);
+  }
+}
+
+/* Common buttons, including legacy page names. */
+body #app :is(
+  .btn,
+  .btn-primary:not(.tiny),
+  .btn-secondary,
+  .btn-outline,
+  .btn-purchase,
+  .btn-order,
+  .action-button,
+  .retry-button,
+  .gift-card-btn,
+  .popup-action-btn,
+  .btn-submit,
+  .btn-cancel
+) {
+  min-height: var(--control-height);
+  padding: 0 20px;
+  border-radius: var(--radius-control);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  line-height: 1.25;
+  transition: color var(--motion-base) ease, background-color var(--motion-base) ease,
+    border-color var(--motion-base) ease, box-shadow var(--motion-base) ease,
+    transform var(--motion-fast) ease;
+}
+
+body #app :is(.btn-chip, .tab-btn, .page-button, .btn-action) {
+  min-height: var(--control-height-compact);
+  border-radius: var(--radius-chip);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+body #app button:disabled {
+  box-shadow: none;
+  opacity: 0.55;
+  transform: none;
+}
+
+body #app button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+body #app button.password-toggle {
+  min-width: 40px;
+  min-height: 40px;
+  border: 0;
+  background: transparent;
+}
+
+body #app :is(.modal-close, .popup-close-btn, .pm-close, .close-button, .close-btn, .close-btn-icon, .modal-close-btn) {
+  min-width: 40px;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* List rows are readable, keyboard friendly and share one density. */
+body #app :is(.menu-item, .account-list-row, .password-row, .setting-item) {
+  min-height: 56px;
+  color: var(--text-color);
+  font-size: var(--font-size-base);
+}
+
+body #app button.menu-item {
+  width: 100%;
+  padding: 12px 16px;
+  border: 0;
+  background: transparent;
+  text-align: start;
+}
+
+body #app button.welcome-card {
+  width: 100%;
+  text-align: start;
+}
+
+body #app :is(button.doc-item, button.download-option, button.password-row, button.pending-item, button.period-card) {
+  width: 100%;
+  color: var(--text-color);
+  text-align: start;
+}
+
+body #app :is(button.doc-item, button.download-option, button.period-card) {
+  background: var(--card-background);
+}
+
+body #app :is(button.password-row, button.pending-item) {
+  background: transparent;
+}
+
+body #app button.language-item,
+body #app .user-avatar-container button.menu-item {
+  width: 100%;
+  border: 0;
+  color: var(--text-color);
+  background: transparent;
+  text-align: start;
+}
+
+body #app :is(.menu-title, .stats-label, .balance-card-title) {
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+/* Inputs and selects keep a stable 16px size, preventing mobile browser zoom. */
+body #app :is(input:not([type='checkbox']):not([type='radio']), textarea, select) {
+  min-height: var(--control-height);
+  color: var(--text-color);
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+}
+
+/* Shared feedback states. */
+body #app :is(.error-state, .empty-state, .no-plans-message, .empty-records) {
+  display: flex;
+  min-height: 220px;
+  padding: 32px var(--card-padding);
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--secondary-text-color);
+  text-align: center;
+}
+
+body #app :is(.loading-state, .nodes-loading, .orders-loading, .docs-loading, .doc-loading, .ticket-loading) {
+  display: flex;
+  min-height: 180px;
+  padding: 32px var(--card-padding);
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--secondary-text-color);
+  text-align: center;
+}
+
+body #app :is(.error-state, .empty-state, .no-plans-message, .empty-records, .loading-state) > :last-child {
+  margin-bottom: 0;
+}
+
+body #app :is(.skeleton-row, .skeleton-title, .skeleton-label, .skeleton-value, .skeleton-price) {
+  overflow: hidden;
+  background: linear-gradient(
+    90deg,
+    rgba(var(--text-color-rgb), 0.06),
+    rgba(var(--text-color-rgb), 0.12),
+    rgba(var(--text-color-rgb), 0.06)
+  );
+  background-size: 200% 100%;
+}
+
+@media (max-width: map.get($breakpoints, md)) {
+  body #app :is(
+    .dashboard-inner,
+    .shop-inner,
+    .order-confirm-inner,
+    .payment-inner,
+    .account-inner,
+    .more-inner,
+    .profile-inner,
+    .orders-inner,
+    .ticket-inner,
+    .docs-inner,
+    .gift-inner,
+    .deposit-inner
+  ) {
+    padding-inline: 16px;
+  }
+
+  body #app :is(.card-title, .modal-title, .popup-title, .section-heading, .invite-section-title) {
+    font-size: var(--font-size-base);
+  }
+
+  body #app :is(
+    .btn,
+    .btn-primary:not(.tiny),
+    .btn-secondary,
+    .btn-outline,
+    .btn-purchase,
+    .btn-order,
+    .action-button,
+    .retry-button,
+    .gift-card-btn,
+    .popup-action-btn,
+    .btn-submit,
+    .btn-cancel
+  ) {
+    padding-inline: 16px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * Phase 2: high-frequency customer journeys
+ * ----------------------------------------------------------------------- */
+
+body #app :is(
+  .dashboard-container,
+  .shop-container,
+  .order-confirm-container,
+  .payment-container,
+  .deposit-container,
+  .account-container,
+  .profile-container,
+  .more-container
+) {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--page-padding-y) max(var(--page-padding-x), env(safe-area-inset-right))
+    calc(104px + env(safe-area-inset-bottom)) max(var(--page-padding-x), env(safe-area-inset-left));
+}
+
+body #app :is(
+  .orders-container,
+  .trafficlog-container,
+  .docs-container,
+  .gift-container,
+  .nodes-container,
+  .ticket-container,
+  .wallet-page
+) {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--page-padding-y) max(var(--page-padding-x), env(safe-area-inset-right))
+    calc(104px + env(safe-area-inset-bottom)) max(var(--page-padding-x), env(safe-area-inset-left));
+}
+
+body #app :is(
+  .dashboard-inner,
+  .shop-inner,
+  .order-confirm-inner,
+  .payment-inner,
+  .deposit-inner,
+  .account-inner,
+  .profile-inner,
+  .more-inner
+) {
+  max-width: var(--page-max-width);
+  padding-inline: 0;
+}
+
+body #app :is(
+  .dashboard-inner,
+  .shop-inner,
+  .order-confirm-inner,
+  .payment-inner,
+  .deposit-inner,
+  .account-inner,
+  .profile-inner,
+  .more-inner,
+  .orders-inner,
+  .trafficlog-inner,
+  .docs-inner,
+  .gift-inner,
+  .nodes-inner,
+  .ticket-list-container,
+  .wallet-page
+) {
+  width: 100%;
+  max-width: var(--page-max-width);
+  margin-inline: auto;
+}
+
+body #app :is(
+  .orders-inner,
+  .trafficlog-inner,
+  .docs-inner,
+  .gift-inner,
+  .nodes-inner,
+  .ticket-list-container
+) {
+  padding-inline: 0;
+}
+
+body #app :is(.dashboard-card, .section-wrapper, .plan-card, .profile-card, .combined-card) .card-header {
+  margin-bottom: 16px;
+}
+
+body #app :is(.dashboard-container, .shop-container, .deposit-container, .account-container, .profile-container) :is(
+  .dashboard-card,
+  .plan-card,
+  .wallet-summary-card,
+  .invite-balance-card,
+  .growth-level-card,
+  .combined-card,
+  .profile-card
+) {
+  background: var(--card-background);
+  border: 1px solid var(--card-border);
+}
+
+/* Dashboard: predictable vertical rhythm and a responsive download grid. */
+body #app .dashboard-container .dashboard-inner > .dashboard-card {
+  margin-bottom: var(--section-gap);
+}
+
+body #app .dashboard-container .pending-item {
+  width: 100%;
+  color: var(--text-color);
+  background: transparent;
+  text-align: start;
+}
+
+body #app .dashboard-container .pending-items-card {
+  padding: 14px 16px;
+}
+
+body #app .dashboard-container .pending-items-card .card-header {
+  margin-bottom: 8px;
+}
+
+body #app .dashboard-container .pending-items-card .pending-item {
+  min-height: 48px;
+  padding: 8px 10px;
+}
+
+body #app .dashboard-container .pending-items-card .pending-icon {
+  width: 32px;
+  height: 32px;
+  margin-right: 10px;
+  border-radius: 10px;
+}
+
+body #app .dashboard-container .download-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+body #app .dashboard-container .download-option {
+  min-height: 132px;
+  color: var(--text-color);
+  background: var(--input-background);
+  border: 1px solid transparent;
+  border-radius: var(--radius-card-compact);
+}
+
+body #app .dashboard-container .download-option:hover {
+  background: var(--surface-hover);
+  border-color: var(--brand-border);
+}
+
+/* Shop: equal-height products with a stable price and CTA hierarchy. */
+body #app .shop-container .plans-wrapper {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  gap: var(--section-gap);
+  align-items: stretch;
+}
+
+body #app .shop-container .plans-wrapper > :is(.plan-card, .dashboard-card) {
+  width: 100%;
+  max-width: none;
+}
+
+body #app .shop-container .plans-wrapper > .plan-card {
+  max-width: 480px;
+}
+
+body #app .shop-container .plan-card {
+  min-height: 100%;
+  padding: var(--card-padding);
+}
+
+body #app .shop-container .plan-card .card-body {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+body #app .shop-container .plan-card .plan-content {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+body #app .shop-container .price-display {
+  min-height: 42px;
+  flex-wrap: wrap;
+  column-gap: 4px;
+  row-gap: 6px;
+}
+
+body #app .shop-container .price-display .amount {
+  font-size: clamp(28px, 4vw, 36px);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.035em;
+}
+
+body #app .shop-container :is(.sale-badge, .sale-countdown) {
+  color: var(--promotion-color);
+}
+
+body #app .shop-container .sale-badge {
+  color: #fff;
+  background: var(--promotion-color);
+}
+
+body #app .shop-container .plan-metrics {
+  gap: 8px;
+}
+
+body #app .shop-container .plan-metric {
+  min-height: 72px;
+  padding: 12px 8px;
+  background: var(--input-background);
+  border-radius: var(--radius-card-compact);
+}
+
+body #app .shop-container .btn-purchase {
+  width: 100%;
+  margin-top: 20px;
+}
+
+/* Checkout and payment: two balanced columns on desktop, one clear flow on mobile. */
+body #app :is(.order-confirm-container, .payment-container) :is(.order-confirm-inner, .payment-inner) {
+  max-width: var(--page-max-width);
+}
+
+body #app :is(.order-confirm-container, .payment-container) .content-wrapper {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--section-gap);
+  align-items: start;
+}
+
+body #app :is(.order-confirm-container, .payment-container) .section-wrapper,
+body #app .order-confirm-container .plan-card {
+  margin-bottom: var(--section-gap);
+  padding: var(--card-padding);
+  background: var(--card-background);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+body #app :is(.order-confirm-container, .payment-container) .section-title {
+  margin: 0 0 16px;
+  padding: 0;
+  color: var(--heading-color);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+}
+
+body #app :is(.order-confirm-container, .payment-container) .section-title::before {
+  display: none;
+}
+
+body #app .order-confirm-container .period-cards {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+body #app .order-confirm-container button.period-card,
+body #app .payment-container button.payment-method-item {
+  width: 100%;
+  color: var(--text-color);
+  background: var(--input-background);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card-compact);
+  text-align: start;
+}
+
+body #app .order-confirm-container button.period-card.active,
+body #app .payment-container button.payment-method-item.active {
+  background: var(--surface-selected);
+  border-color: var(--theme-color);
+  box-shadow: var(--focus-ring);
+}
+
+body #app .order-confirm-container .coupon-select-trigger {
+  min-height: 56px;
+  background: var(--input-background);
+  border-color: var(--card-border);
+  border-radius: var(--radius-card-compact);
+}
+
+body #app .payment-container .info-row {
+  min-height: 44px;
+  padding: 10px 0;
+  border-radius: 0;
+}
+
+body #app .payment-container .info-row + .info-row {
+  border-top: 1px solid var(--divider-color);
+}
+
+body #app :is(.order-confirm-container, .payment-container) .action-buttons {
+  gap: 10px;
+  margin-top: var(--section-gap);
+}
+
+body #app :is(.order-confirm-container, .payment-container) .action-buttons > button,
+body #app .payment-container .btn-group > button {
+  min-height: var(--control-height);
+  border-radius: var(--radius-control);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+}
+
+/* Wallet: balance first, amount selection second, records last. */
+body #app .deposit-container .wallet-summary-card {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  padding: var(--card-padding);
+}
+
+body #app .deposit-container .wallet-summary-value {
+  font-size: clamp(28px, 5vw, 38px);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+}
+
+body #app .deposit-container .period-cards {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+body #app .deposit-container button.period-card {
+  min-height: 72px;
+  background: var(--input-background);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card-compact);
+  text-align: center;
+}
+
+body #app .deposit-container button.period-card.active {
+  background: var(--surface-selected);
+  border-color: var(--theme-color);
+  box-shadow: var(--focus-ring);
+}
+
+body #app .deposit-container .records-table :is(th, td) {
+  padding: 14px 12px;
+}
+
+/* Invitation: compact financial summary without hiding growth information. */
+body #app .account-container .invite-balance-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+body #app .account-container .invite-primary-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: var(--section-gap);
+}
+
+body #app .account-container .invite-primary-actions.single-action {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body #app .account-container .member-commission-rate {
+  text-align: end;
+}
+
+body #app .account-container .stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+body #app .account-container .combined-card {
+  margin-top: var(--section-gap);
+}
+
+body #app .account-container .records-table-wrapper {
+  overflow-x: auto;
+}
+
+/* Profile and more use the same desktop content width as every authenticated page. */
+body #app :is(.profile-container, .more-container) :is(.profile-inner, .more-inner) {
+  max-width: var(--page-max-width);
+}
+
+body #app .profile-container .profile-card + .profile-card,
+body #app .more-container .dashboard-card + .dashboard-card {
+  margin-top: 12px;
+}
+
+body #app :is(.profile-container, .more-container) :is(.setting-item, .password-row, .menu-item) {
+  padding-block: 12px;
+}
+
+@media (min-width: map.get($breakpoints, xl)) {
+  body #app .shop-container .plan-card:only-child {
+    max-width: 420px;
+    grid-column: 1 / -1;
+    justify-self: center;
+  }
+}
+
+@media (min-width: map.get($breakpoints, md)) {
+  body #app :is(
+    .dashboard-container,
+    .shop-container,
+    .order-confirm-container,
+    .payment-container,
+    .deposit-container,
+    .account-container,
+    .profile-container,
+    .more-container
+  ) {
+    padding-bottom: 40px;
+  }
+}
+
+@media (max-width: map.get($breakpoints, md)) {
+  body #app :is(.order-confirm-container, .payment-container) .content-wrapper {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body #app .deposit-container .wallet-summary-card {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body #app .deposit-container .period-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body #app .account-container .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: map.get($breakpoints, sm)) {
+  body #app .shop-container .plan-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  body #app .order-confirm-container .period-cards,
+  body #app .deposit-container .period-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body #app .account-container .invite-primary-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+}

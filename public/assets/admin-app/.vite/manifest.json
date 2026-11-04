@@ -1,0 +1,255 @@
+{
+  "../../catboard/admin-ui/node_modules/.pnpm/darkreader@4.9.132/node_modules/darkreader/darkreader.mjs": {
+    "file": "assets/darkreader-Cmw0ewJI.js",
+    "name": "darkreader",
+    "src": "../../catboard/admin-ui/node_modules/.pnpm/darkreader@4.9.132/node_modules/darkreader/darkreader.mjs",
+    "isDynamicEntry": true
+  },
+  "_AdminLayout-bCWwO5Da.js": {
+    "file": "assets/AdminLayout-bCWwO5Da.js",
+    "name": "AdminLayout",
+    "imports": [
+      "_rolldown-runtime-CbXtAM7H.js",
+      "_staticApi-CBIDgkgc.js",
+      "_darkMode-DMjKd41J.js",
+      "_user-DExmctKh.js"
+    ]
+  },
+  "_CloudAccountSelect-Cd4C9SQG.js": {
+    "file": "assets/CloudAccountSelect-Cd4C9SQG.js",
+    "name": "CloudAccountSelect",
+    "imports": [
+      "_rolldown-runtime-CbXtAM7H.js",
+      "_staticApi-CBIDgkgc.js",
+      "_AdminLayout-bCWwO5Da.js",
+      "_user-DExmctKh.js",
+      "_cloudAccount-DNGpwYCw.js"
+    ]
+  },
+  "_GlobalOutlined-BRXdNcdW.js": {
+    "file": "assets/GlobalOutlined-BRXdNcdW.js",
+    "name": "GlobalOutlined",
+    "imports": [
+      "_rolldown-runtime-CbXtAM7H.js",
+      "_staticApi-CBIDgkgc.js"
+    ]
+  },
+  "_SafetyCertificateOutlined-PE18Pwtq.js": {
+    "file": "assets/SafetyCertificateOutlined-PE18Pwtq.js",
+    "name": "SafetyCertificateOutlined",
+    "imports": [
+      "_rolldown-runtime-CbXtAM7H.js",
+      "_staticApi-CBIDgkgc.js"
+    ]
+  },
+  "_cloudAccount-DNGpwYCw.js": {
+    "file": "assets/cloudAccount-DNGpwYCw.js",
+    "name": "cloudAccount",
+    "imports": [
+      "_staticApi-CBIDgkgc.js",
+      "_user-DExmctKh.js"
+    ]
+  },
+  "_cloudResource-BWV9xEk-.js": {
+    "file": "assets/cloudResource-BWV9xEk-.js",
+    "name": "cloudResource",
+    "imports": [
+      "_staticApi-CBIDgkgc.js",
+      "_user-DExmctKh.js"
+    ]
+  },
+  "_darkMode-DMjKd41J.js": {
+    "file": "assets/darkMode-DMjKd41J.js",
+    "name": "darkMode",
+    "imports": [
+      "_rolldown-runtime-CbXtAM7H.js",
+      "_staticApi-CBIDgkgc.js"
+    ],
+    "dynamicImports": [
+      "../../catboard/admin-ui/node_modules/.pnpm/darkreader@4.9.132/node_modules/darkreader/darkreader.mjs"
+    ]
+  },
+  "_drawer-Bf3PL6G0.js": {
+    "file": "assets/drawer-Bf3PL6G0.js",
+    "name": "drawer",
+    "imports": [
+      "_rolldown-runtime-CbXtAM7H.js",
+      "_staticApi-CBIDgkgc.js"
+    ]
+  },
+  "_input-number-NJ7tPo8n.js": {
+    "file": "assets/input-number-NJ7tPo8n.js",
+    "name": "input-number",
+    "imports": [
+      "_rolldown-runtime-CbXtAM7H.js",
+      "_staticApi-CBIDgkgc.js",
+      "_AdminLayout-bCWwO5Da.js"
+    ]
+  },
+  "_lib-CN30MN4O.js": {
+    "file": "assets/lib-CN30MN4O.js",
+    "name": "lib",
+    "imports": [
+      "_rolldown-runtime-CbXtAM7H.js",
+      "_staticApi-CBIDgkgc.js",
+      "_darkMode-DMjKd41J.js"
+    ]
+  },
+  "_rolldown-runtime-CbXtAM7H.js": {
+    "file": "assets/rolldown-runtime-CbXtAM7H.js",
+    "name": "rolldown-runtime"
+  },
+  "_staticApi-CBIDgkgc.js": {
+    "file": "assets/staticApi-CBIDgkgc.js",
+    "name": "staticApi",
+    "imports": [
+      "_rolldown-runtime-CbXtAM7H.js"
+    ]
+  },
+  "_user-DExmctKh.js": {
+    "file": "assets/user-DExmctKh.js",
+    "name": "user",
+    "imports": [
+      "_staticApi-CBIDgkgc.js"
+    ]
+  },
+  "index.html": {
+    "file": "assets/index-VwxcY4aR.js",
+    "name": "index",
+    "src": "index.html",
+    "isEntry": true,
+    "imports": [
+      "_rolldown-runtime-CbXtAM7H.js",
+      "_lib-CN30MN4O.js",
+      "_staticApi-CBIDgkgc.js",
+      "_darkMode-DMjKd41J.js"
+    ],
+    "dynamicImports": [
+      "src/pages/login/LoginPage.tsx",
+      "src/pages/cloud/CloudAccountPage.tsx",
+      "src/pages/client-config/ClientConfigPage.tsx",
+      "src/pages/aliyun-dns/AliyunDnsPage.tsx",
+      "src/pages/cloudflare-dns/CloudflareDnsPage.tsx"
+    ],
+    "css": [
+      "assets/index-C3_fBb8v.css"
+    ],
+    "assets": [
+      "assets/fa-solid-900-BiazUjGD.woff2",
+      "assets/fa-solid-900-f8GZlByx.woff",
+      "assets/fa-regular-400-83_sh5h9.woff2",
+      "assets/fa-regular-400-D0k2dGf6.woff",
+      "assets/fa-brands-400-B9B0FQJq.woff2",
+      "assets/fa-brands-400-kK0FQ5N5.woff",
+      "assets/Simple-Line-Icons-D0KobG-u.woff2",
+      "assets/Simple-Line-Icons-BAgH0-Pt.woff"
+    ]
+  },
+  "src/assets/fonts/fontawesome/fa-brands-400.woff": {
+    "file": "assets/fa-brands-400-kK0FQ5N5.woff",
+    "src": "src/assets/fonts/fontawesome/fa-brands-400.woff"
+  },
+  "src/assets/fonts/fontawesome/fa-brands-400.woff2": {
+    "file": "assets/fa-brands-400-B9B0FQJq.woff2",
+    "src": "src/assets/fonts/fontawesome/fa-brands-400.woff2"
+  },
+  "src/assets/fonts/fontawesome/fa-regular-400.woff": {
+    "file": "assets/fa-regular-400-D0k2dGf6.woff",
+    "src": "src/assets/fonts/fontawesome/fa-regular-400.woff"
+  },
+  "src/assets/fonts/fontawesome/fa-regular-400.woff2": {
+    "file": "assets/fa-regular-400-83_sh5h9.woff2",
+    "src": "src/assets/fonts/fontawesome/fa-regular-400.woff2"
+  },
+  "src/assets/fonts/fontawesome/fa-solid-900.woff": {
+    "file": "assets/fa-solid-900-f8GZlByx.woff",
+    "src": "src/assets/fonts/fontawesome/fa-solid-900.woff"
+  },
+  "src/assets/fonts/fontawesome/fa-solid-900.woff2": {
+    "file": "assets/fa-solid-900-BiazUjGD.woff2",
+    "src": "src/assets/fonts/fontawesome/fa-solid-900.woff2"
+  },
+  "src/assets/fonts/simple-line-icons/Simple-Line-Icons.woff": {
+    "file": "assets/Simple-Line-Icons-BAgH0-Pt.woff",
+    "src": "src/assets/fonts/simple-line-icons/Simple-Line-Icons.woff"
+  },
+  "src/assets/fonts/simple-line-icons/Simple-Line-Icons.woff2": {
+    "file": "assets/Simple-Line-Icons-D0KobG-u.woff2",
+    "src": "src/assets/fonts/simple-line-icons/Simple-Line-Icons.woff2"
+  },
+  "src/pages/aliyun-dns/AliyunDnsPage.tsx": {
+    "file": "assets/AliyunDnsPage-CbjIqvQG.js",
+    "name": "AliyunDnsPage",
+    "src": "src/pages/aliyun-dns/AliyunDnsPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_rolldown-runtime-CbXtAM7H.js",
+      "_lib-CN30MN4O.js",
+      "_staticApi-CBIDgkgc.js",
+      "_AdminLayout-bCWwO5Da.js",
+      "_input-number-NJ7tPo8n.js",
+      "_CloudAccountSelect-Cd4C9SQG.js",
+      "_drawer-Bf3PL6G0.js",
+      "_GlobalOutlined-BRXdNcdW.js",
+      "_user-DExmctKh.js"
+    ]
+  },
+  "src/pages/client-config/ClientConfigPage.tsx": {
+    "file": "assets/ClientConfigPage-xw_Y-b74.js",
+    "name": "ClientConfigPage",
+    "src": "src/pages/client-config/ClientConfigPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_rolldown-runtime-CbXtAM7H.js",
+      "_lib-CN30MN4O.js",
+      "_staticApi-CBIDgkgc.js",
+      "_AdminLayout-bCWwO5Da.js",
+      "_input-number-NJ7tPo8n.js",
+      "_CloudAccountSelect-Cd4C9SQG.js",
+      "_user-DExmctKh.js",
+      "_cloudResource-BWV9xEk-.js"
+    ]
+  },
+  "src/pages/cloud/CloudAccountPage.tsx": {
+    "file": "assets/CloudAccountPage-Cm3G6ysU.js",
+    "name": "CloudAccountPage",
+    "src": "src/pages/cloud/CloudAccountPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_rolldown-runtime-CbXtAM7H.js",
+      "_staticApi-CBIDgkgc.js",
+      "_AdminLayout-bCWwO5Da.js",
+      "_drawer-Bf3PL6G0.js",
+      "_SafetyCertificateOutlined-PE18Pwtq.js",
+      "_user-DExmctKh.js",
+      "_cloudAccount-DNGpwYCw.js",
+      "_cloudResource-BWV9xEk-.js"
+    ]
+  },
+  "src/pages/cloudflare-dns/CloudflareDnsPage.tsx": {
+    "file": "assets/CloudflareDnsPage-DVA9leZ3.js",
+    "name": "CloudflareDnsPage",
+    "src": "src/pages/cloudflare-dns/CloudflareDnsPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_rolldown-runtime-CbXtAM7H.js",
+      "_staticApi-CBIDgkgc.js",
+      "_AdminLayout-bCWwO5Da.js",
+      "_input-number-NJ7tPo8n.js",
+      "_SafetyCertificateOutlined-PE18Pwtq.js",
+      "_GlobalOutlined-BRXdNcdW.js",
+      "_user-DExmctKh.js"
+    ]
+  },
+  "src/pages/login/LoginPage.tsx": {
+    "file": "assets/LoginPage-BQHr6qCX.js",
+    "name": "LoginPage",
+    "src": "src/pages/login/LoginPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_rolldown-runtime-CbXtAM7H.js",
+      "_staticApi-CBIDgkgc.js",
+      "_user-DExmctKh.js"
+    ]
+  }
+}
