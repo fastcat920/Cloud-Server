@@ -97,6 +97,9 @@ with tempfile.TemporaryDirectory(prefix='cloud-native-http-') as directory:
   after=call('overview')['data'];row=next(v for v in after['versions'] if v['id']==edited)
   assert 'api_url' not in row['content'] and 'api_url' not in row['schema']['properties'] and 'api_url' not in row['schema']['required']
   assert row['field_order']==ordering
+  output=call('config.preview',{'id':edited},csrf)['data']['payload']
+  assert list(json.loads(output))==ordering['[]']
+  assert call('config.preview',{'id':v2},csrf)['data']['checksum']==hashlib.sha256(call('config.preview',{'id':v2},csrf)['data']['payload'].encode()).hexdigest()
   assert after['templates']==before['templates']
   if edited!=v2:assert next(v for v in after['versions'] if v['id']==v2)==source
   copy=call('config.clone',{'id':edited},csrf)['data']

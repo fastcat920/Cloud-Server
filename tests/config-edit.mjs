@@ -66,3 +66,34 @@ assert.equal(nested.content.rows[0].a, 1);
 console.log(
   "PASS: permanent schema deletion, required constraints, isolated templates, field ordering, array moves and nested order remapping",
 );
+const { orderedContent } = await import("../assets/config-edit.js");
+const source = {
+  z: 1,
+  a: { first: 1, second: 2 },
+  list: [
+    { x: 1, y: 2 },
+    { x: 3, y: 4 },
+  ],
+};
+const ordered = orderedContent(source, {
+  "[]": ["a", "z", "list"],
+  '["a"]': ["second", "first"],
+  '["list","0"]': ["y", "x"],
+});
+assert.deepEqual(Object.keys(ordered), ["a", "z", "list"]);
+assert.deepEqual(Object.keys(ordered.a), ["second", "first"]);
+assert.deepEqual(Object.keys(ordered.list[0]), ["y", "x"]);
+assert.equal(ordered.list[1].x, 3);
+assert.deepEqual(Object.keys(source), ["z", "a", "list"]);
+const legacyOrder = {
+  content: { a: 1, b: 2 },
+  schema: { type: "object", properties: {} },
+  field_order: [],
+};
+moveParameter(legacyOrder, ["b"], 0);
+assert(!Array.isArray(legacyOrder.field_order));
+assert.deepEqual(JSON.parse(JSON.stringify(legacyOrder.field_order))["[]"], [
+  "b",
+  "a",
+]);
+assert.deepEqual(Object.keys(orderedContent({ z: 1, a: 2 })), ["z", "a"]);

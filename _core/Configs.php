@@ -13,20 +13,34 @@ final class Configs
     {
         return ['config_version' => '1','panel_type' => 'v2board','api_prefix' => '/api/v1','domains' => [],'gateway_urls' => [],'contact' => ['website' => []],'features' => array_fill_keys(['balance_enabled','devices_enabled','gift_card_enabled','join_group_enabled','knowledge_base_enabled','orders_enabled','tickets_enabled','traffic_details_enabled'], true),'update' => ['schema_version' => 2,'platforms' => new \stdClass()],'latency' => ['display_discount_percent' => 0]];
     }
-    public static function canonical(array|object $content): string
+    public static function canonical(array|object $content, array $orders = [], bool $preserveOrder = false): string
     {
-        $sort = function (&$value) use (&$sort) {
-            if (is_array($value)) {
-                if (!array_is_list($value)) {
-                    ksort($value);
+        $sort = function (mixed $value, array $path = []) use (&$sort, $orders, $preserveOrder): mixed {
+            if (!is_array($value) && !is_object($value)) {
+                return $value;
+            }
+            if (is_array($value) && array_is_list($value)) {
+                foreach ($value as $index => &$item) {
+                    $item = $sort($item, [...$path, (string)$index]);
                 }
-                foreach ($value as &$item) {
-                    $sort($item);
+                return $value;
+            }
+            $values = (array)$value;
+            if (!$preserveOrder) {
+                ksort($values);
+            }
+            $encoded = json_encode($path, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+            $preferred = $orders[$encoded] ?? [];
+            $keys = array_unique(array_merge($preferred, array_keys($values)));
+            $result = new \stdClass();
+            foreach ($keys as $key) {
+                if (array_key_exists($key, $values)) {
+                    $result->{(string)$key} = $sort($values[$key], [...$path, (string)$key]);
                 }
             }
+            return $result;
         };
-        $sort($content);
-        return json_encode($content, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
+        return json_encode($sort($content), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
     }
     public static function materialize(mixed $value, array $schema): mixed
     {
@@ -47,7 +61,7 @@ final class Configs
     }
     public function encode(array $version, array $settings): string
     {
-        $plain = self::canonical(self::materialize($version['content'], $version['schema'] ?? []));
+        $plain = self::canonical(self::materialize($version['content'], $version['schema'] ?? []), $version['field_order'] ?? [], true);
         $mode = $version['mode'];
         if ($mode === 'plain') {
             return $plain;

@@ -96,7 +96,11 @@ export function moveParameter(revision, path, targetIndex) {
   } else {
     keys.splice(from, 1);
     keys.splice(targetIndex, 0, key);
-    revision.field_order ??= Object.create(null);
+    if (!revision.field_order || Array.isArray(revision.field_order))
+      revision.field_order = Object.assign(
+        Object.create(null),
+        revision.field_order || {},
+      );
     Object.defineProperty(revision.field_order, JSON.stringify(parentPath), {
       value: keys,
       enumerable: true,
@@ -104,4 +108,28 @@ export function moveParameter(revision, path, targetIndex) {
       configurable: true,
     });
   }
+}
+
+// Apply revision ordering to JSON without changing array item order or input values.
+export function orderedContent(value, orders = {}, path = []) {
+  if (Array.isArray(value))
+    return value.map((item, index) =>
+      orderedContent(item, orders, [...path, String(index)]),
+    );
+  if (value === null || typeof value !== "object") return value;
+  const keys = Object.keys(value),
+    saved = orders[JSON.stringify(path)] || [];
+  const sorted = [
+    ...saved.filter((key) => Object.hasOwn(value, key)),
+    ...keys.filter((key) => !saved.includes(key)),
+  ];
+  const result = {};
+  for (const key of sorted)
+    Object.defineProperty(result, key, {
+      value: orderedContent(value[key], orders, [...path, key]),
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+  return result;
 }

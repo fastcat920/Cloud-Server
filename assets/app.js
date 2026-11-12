@@ -3,6 +3,7 @@ import {
   moveParameter,
   atPath,
   orderedKeys,
+  orderedContent,
 } from "./config-edit.js";
 import {
   configFields,
@@ -702,7 +703,7 @@ function configsView() {
 }
 function schemaFields(r) {
   return (
-    `<p class="help">拖动 ↕ 或使用上移、下移调整同组顺序。对象字段排序用于表单展示；数组排序会改变客户端读取顺序。彻底删除及排序需保存修订后生效。</p>` +
+    `<p class="help">拖动 ↕ 或使用上移、下移调整同组顺序。字段顺序同步到完整 JSON 和发布文件；数组排序会改变客户端读取顺序。彻底删除及排序需保存修订后生效。</p>` +
     configFields(r.content, r.schema, [], r.field_order || {}) +
     button("添加参数", "tree.add", { path: "[]" }, "text", "plus")
   );
@@ -715,7 +716,7 @@ function editorView(r) {
       "输出格式",
       Object.entries(modes).map(([value, label]) => ({ value, label })),
       r.mode,
-    )}${field("summary", "本次修改说明", r.summary || "")}${editorMode === "json" ? field("content", "完整配置 JSON", JSON.stringify(r.content, null, 2), "textarea", 'class="code" required') : `<div class="form-grid">${schemaFields(r)}</div>`}<div class="toolbar" style="margin-top:24px"><button class="button primary" type="submit">保存修订</button>${button("保存并推送", "config.savepush", {}, "primary", "arrow")}${button("重新推送此修订", "config.publish", { id: r.id })}${button("基于此修订回滚推送", "config.rollback", { id: r.id }, "danger")}${r.status === "draft" ? button("删除草稿", "config.delete", { id: r.id }, "danger") : ""}</div></form>`,
+    )}${field("summary", "本次修改说明", r.summary || "")}${editorMode === "json" ? field("content", "完整配置 JSON", JSON.stringify(orderedContent(r.content, r.field_order || {}), null, 2), "textarea", 'class="code" required') : `<div class="form-grid">${schemaFields(r)}</div>`}<div class="toolbar" style="margin-top:24px"><button class="button primary" type="submit">保存修订</button>${button("保存并推送", "config.savepush", {}, "primary", "arrow")}${button("重新推送此修订", "config.publish", { id: r.id })}${button("基于此修订回滚推送", "config.rollback", { id: r.id }, "danger")}${r.status === "draft" ? button("删除草稿", "config.delete", { id: r.id }, "danger") : ""}</div></form>`,
   );
 }
 function templatesView() {

@@ -117,7 +117,12 @@ try {
     $configs = new Configs($security);
     $version = ['mode' => 'plain','content' => ['z' => 1,'a' => 2]];
     $plain = $configs->encode($version, []);
-    verify(strpos($plain, '"a"') < strpos($plain, '"z"'), 'Canonical config');
+    verify(strpos($plain, '"z"') < strpos($plain, '"a"'), 'Config preserves original field order');
+    $ordered = $configs->encode($version + ['field_order' => ['[]' => ['a','z']]], []);
+    verify(strpos($ordered, '"a"') < strpos($ordered, '"z"'), 'Explicit revision field order');
+    $nested = $configs->encode(['mode' => 'plain','content' => ['group' => ['a' => 1,'b' => 2], 'rows' => [['x' => 1,'y' => 2]]], 'field_order' => ['["group"]' => ['b','a'], '["rows","0"]' => ['y','x']]], []);
+    verify(strpos($nested, '"b"') < strpos($nested, '"a"') && strpos($nested, '"y"') < strpos($nested, '"x"'), 'Nested object and array-item field order');
+    verify(strpos(Configs::canonical($version['content']), '"a"') < strpos(Configs::canonical($version['content']), '"z"'), 'Canonical helper remains deterministic');
     $version['mode'] = 'xor_base64';
     $settings = ['xor_key' => $security->encrypt('key')];
     $payload = $configs->encode($version, $settings);
