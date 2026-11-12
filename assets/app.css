@@ -1147,3 +1147,67 @@ dialog::backdrop {
 .config-node > .config-drag {
   float: right;
 }
+
+.config-header,
+.config-group > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.config-header {
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.config-header > label {
+  margin: 0;
+  min-width: 0;
+}
+.config-heading {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.config-heading small {
+  color: var(--muted);
+  font-weight: 400;
+  margin-left: 8px;
+}
+.config-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.config-actions .button {
+  padding: 4px 6px;
+  min-height: 32px;
+  white-space: nowrap;
+}
+.config-actions .config-drag {
+  float: none;
+  padding: 4px 6px;
+}
+.config-node > .field {
+  margin: 0;
+}
+.config-group > summary::before {
+  content: "▸";
+  color: var(--muted);
+}
+.config-group[open] > summary::before {
+  content: "▾";
+}
+.config-group > summary > .config-heading {
+  flex: 1;
+}
+@media (max-width: 600px) {
+  .config-group > summary {
+    flex-wrap: wrap;
+  }
+  .config-actions {
+    flex-wrap: wrap;
+  }
+}

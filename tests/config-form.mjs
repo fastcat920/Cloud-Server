@@ -102,3 +102,10 @@ assert(
   ),
 );
 assert(removedGroup.includes("当前没有值，不会输出到配置文件"));
+const compact = configFields({ panel_type: "v2board" });
+assert(compact.includes('class="config-header"'));
+assert(compact.indexOf("面板类型") < compact.indexOf("panel_type</small>"));
+assert(compact.indexOf(">上移</button>") < compact.indexOf(">下移</button>"));
+assert(compact.indexOf(">下移</button>") < compact.indexOf(">删除</button>"));
+assert(compact.indexOf(">删除</button>") < compact.indexOf("data-drag-path="));
+assert(!compact.includes("彻底删除"));
