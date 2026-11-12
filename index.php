@@ -21,7 +21,7 @@ if (isset($_GET['asset'])) {
     $body = file_get_contents(__DIR__.'/assets/'.$name);
     if ($isJs) {
         foreach ($assetNames as $dependency) {
-            $body = str_replace('"./'.$dependency.'"', '"index.php?asset='.$dependency.'&v='.$assetVersion.'"', $body);
+            $body = str_replace('"./'.$dependency.'"', '"./index.php?asset='.$dependency.'&v='.$assetVersion.'"', $body);
         }
     }
     echo $body;

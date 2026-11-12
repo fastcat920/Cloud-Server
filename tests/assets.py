@@ -20,10 +20,10 @@ try:
     assert response.headers['Cache-Control'] == 'no-store'
     assert 'index.php?asset=app.js&amp;v=' in html
     app = get('?asset=app.js').read().decode()
-    assert 'index.php?asset=config-form.js&v=' in app
-    assert 'index.php?asset=ui.js&v=' in app
+    assert '"./index.php?asset=config-form.js&v=' in app
+    assert '"./index.php?asset=ui.js&v=' in app
     form = get('?asset=config-form.js').read().decode()
-    assert 'index.php?asset=ui.js&v=' in form
+    assert '"./index.php?asset=ui.js&v=' in form
     assert '"./ui.js"' not in form
     assert 'text/javascript' in get('?asset=app.js').headers['Content-Type']
     try:
