@@ -83,3 +83,22 @@ assert.equal(
   parameterValue(new Map([["value", "hello"]]), { type: "string" }),
   "hello",
 );
+const removedGroup = configFields(
+  { update: {} },
+  {
+    type: "object",
+    properties: {
+      update: {
+        type: "object",
+        properties: { platforms: { type: "object", properties: {} } },
+      },
+    },
+  },
+);
+assert(removedGroup.includes("未加入配置的模板字段（1）"));
+assert(
+  !removedGroup.includes(
+    'data-path="[&quot;update&quot;,&quot;platforms&quot;]"',
+  ),
+);
+assert(removedGroup.includes("当前没有值，不会输出到配置文件"));

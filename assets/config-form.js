@@ -62,7 +62,8 @@ export function configFields(content, schema = {}, path = []) {
   const keys = array
     ? content.map((_, i) => String(i))
     : [...new Set([...Object.keys(content), ...Object.keys(properties)])];
-  return keys
+  const missing = [];
+  const fields = keys
     .map((key) => {
       const spec = array ? schema.items || {} : properties[key] || {},
         p = [...path, key],
@@ -71,8 +72,12 @@ export function configFields(content, schema = {}, path = []) {
           spec.title ||
           labels[key] ||
           (array ? `第 ${Number(key) + 1} 项` : key);
-      if (!Object.hasOwn(content, key))
-        return `<div class="config-node">${e(label)} ${button("添加参数", "tree.add", { path: JSON.stringify(path), key }, "text")}</div>`;
+      if (!Object.hasOwn(content, key)) {
+        missing.push(
+          `<div class="config-node">${e(label)} ${button("添加参数", "tree.add", { path: JSON.stringify(path), key }, "text")}${schema.required?.includes(key) ? '<small class="help">必填，保存前需添加</small>' : ""}</div>`,
+        );
+        return "";
+      }
       const value = content[key],
         type = valueType(value),
         name = "cfg_" + encodeURIComponent(encoded);
@@ -107,6 +112,12 @@ export function configFields(content, schema = {}, path = []) {
       return `<div class="config-node" data-config-path="${e(encoded)}" data-type="${e(type)}" data-enum="${spec.enum ? "1" : "0"}" data-name="${e(name)}">${control}<div class="toolbar"><small class="help">${e(key)}${spec.description ? " · " + e(spec.description) : ""}</small>${controls}</div></div>`;
     })
     .join("");
+  return (
+    fields +
+    (missing.length
+      ? `<details class="config-available"><summary>未加入配置的模板字段（${missing.length}）</summary><p class="help">这些字段当前没有值，不会输出到配置文件。需要时再添加。</p>${missing.join("")}</details>`
+      : "")
+  );
 }
 export function readFields(form, original) {
   const result = structuredClone(original);

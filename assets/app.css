@@ -1124,3 +1124,13 @@ dialog::backdrop {
 .config-node .toolbar {
   justify-content: space-between;
 }
+.config-available {
+  grid-column: 1 / -1;
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  color: var(--muted);
+}
+.config-available > summary {
+  cursor: pointer;
+}
