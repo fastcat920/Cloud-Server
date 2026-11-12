@@ -109,3 +109,9 @@ assert(compact.indexOf(">上移</button>") < compact.indexOf(">下移</button>")
 assert(compact.indexOf(">下移</button>") < compact.indexOf(">删除</button>"));
 assert(compact.indexOf(">删除</button>") < compact.indexOf("data-drag-path="));
 assert(!compact.includes("彻底删除"));
+const hierarchy = configFields({
+  a: { b: { c: { d: { e: { f: { g: { h: "value" } } } } } } },
+});
+for (let level = 1; level <= 7; level++)
+  assert(hierarchy.includes(`config-level-${level}`));
+assert.equal((hierarchy.match(/config-level-1/g) || []).length, 2);

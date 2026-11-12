@@ -77,13 +77,14 @@ export function configFields(content, schema = {}, path = [], orders = {}) {
       const spec = array ? schema.items || {} : properties[key] || {},
         p = [...path, key],
         encoded = JSON.stringify(p),
+        levelClass = `config-level-${(path.length % 7) + 1}`,
         label =
           spec.title ||
           labels[key] ||
           (array ? `第 ${Number(key) + 1} 项` : key);
       if (!Object.hasOwn(content, key)) {
         missing.push(
-          `<div class="config-node">${e(label)} ${button("添加参数", "tree.add", { path: JSON.stringify(path), key }, "text")}${button("删除", "tree.remove", { path: encoded }, "text")}${schema.required?.includes(key) ? '<small class="help">必填，保存前需添加</small>' : ""}</div>`,
+          `<div class="config-node ${levelClass}">${e(label)} ${button("添加参数", "tree.add", { path: JSON.stringify(path), key }, "text")}${button("删除", "tree.remove", { path: encoded }, "text")}${schema.required?.includes(key) ? '<small class="help">必填，保存前需添加</small>' : ""}</div>`,
         );
         return "";
       }
@@ -109,7 +110,7 @@ export function configFields(content, schema = {}, path = [], orders = {}) {
       const heading = `<span class="config-heading">${e(label)} <small>${e(key)}</small></span>`;
       const actions = `<span class="config-actions">${controls}${drag}</span>`;
       if (type === "object" || type === "array")
-        return `<details class="config-group" data-tree-path="${e(encoded)}" open><summary><span class="config-heading">${e(label)} <small>${e(key)} · ${type === "array" ? value.length + " 项" : "参数组"}</small></span>${actions}</summary><div class="config-children">${configFields(value, spec, p, orders)}<div class="toolbar">${button(type === "array" ? "添加一项" : "添加参数", "tree.add", { path: encoded }, "text", "plus")}</div></div></details>`;
+        return `<details class="config-group ${levelClass}" data-tree-path="${e(encoded)}" open><summary><span class="config-heading">${e(label)} <small>${e(key)} · ${type === "array" ? value.length + " 项" : "参数组"}</small></span>${actions}</summary><div class="config-children">${configFields(value, spec, p, orders)}<div class="toolbar">${button(type === "array" ? "添加一项" : "添加参数", "tree.add", { path: encoded }, "text", "plus")}</div></div></details>`;
       let control = spec.enum
         ? select(
             name,
@@ -144,7 +145,7 @@ export function configFields(content, schema = {}, path = [], orders = {}) {
       control = control.replace(/<label for="[^"]*">[^<]*<\/label>/, "");
       if (type === "boolean" && !spec.enum)
         control = control.replace(e(label) + "</label>", "开启</label>");
-      return `<div class="config-node" data-tree-path="${e(encoded)}" data-config-path="${e(encoded)}" data-type="${e(type)}" data-enum="${spec.enum ? "1" : "0"}" data-name="${e(name)}"><div class="config-header"><label for="${e(name)}" id="${e(name)}_label">${heading}</label>${actions}</div>${control}${spec.description ? `<small class="help">${e(spec.description)}</small>` : ""}</div>`;
+      return `<div class="config-node ${levelClass}" data-tree-path="${e(encoded)}" data-config-path="${e(encoded)}" data-type="${e(type)}" data-enum="${spec.enum ? "1" : "0"}" data-name="${e(name)}"><div class="config-header"><label for="${e(name)}" id="${e(name)}_label">${heading}</label>${actions}</div>${control}${spec.description ? `<small class="help">${e(spec.description)}</small>` : ""}</div>`;
     })
     .join("");
   return (

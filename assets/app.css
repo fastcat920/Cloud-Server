@@ -1211,3 +1211,60 @@ dialog::backdrop {
     flex-wrap: wrap;
   }
 }
+
+/* Soft rainbow hierarchy; inputs retain their neutral surface. */
+:root {
+  --config-level-1: #fff3f3;
+  --config-level-2: #fff5ec;
+  --config-level-3: #fffbea;
+  --config-level-4: #f0faf1;
+  --config-level-5: #edfafa;
+  --config-level-6: #f0f5ff;
+  --config-level-7: #f8f1fc;
+}
+.config-level-1 {
+  --config-level-bg: var(--config-level-1);
+}
+.config-level-2 {
+  --config-level-bg: var(--config-level-2);
+}
+.config-level-3 {
+  --config-level-bg: var(--config-level-3);
+}
+.config-level-4 {
+  --config-level-bg: var(--config-level-4);
+}
+.config-level-5 {
+  --config-level-bg: var(--config-level-5);
+}
+.config-level-6 {
+  --config-level-bg: var(--config-level-6);
+}
+.config-level-7 {
+  --config-level-bg: var(--config-level-7);
+}
+.config-node[class*="config-level-"],
+.config-group[class*="config-level-"] {
+  background: var(--config-level-bg);
+}
+.config-node[class*="config-level-"] {
+  padding: 12px;
+  margin: 8px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.config-node input:not([type="checkbox"]),
+.config-node textarea,
+.config-node select {
+  background: var(--surface);
+  color: var(--ink);
+}
+:root {
+  --config-muted: #566872;
+  --config-action: #11766e;
+}
+.config-node[class*="config-level-"],
+.config-group[class*="config-level-"] {
+  --muted: var(--config-muted);
+  --accent: var(--config-action);
+}
