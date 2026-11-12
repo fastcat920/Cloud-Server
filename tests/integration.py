@@ -34,7 +34,7 @@ with tempfile.TemporaryDirectory(prefix='cloud-native-http-') as directory:
   target_id=call('target.save',{'account_id':account_id,'name':'Test target','region':'cn-hangzhou','bucket':'test-bucket','key':'config.json','enabled':True},csrf)['data']
   call('account.delete',{'id':account_id,'confirmation':'Testing <script>'},csrf,422)
   call('config.save',{'id':1,'content':{'domains':['not a url']},'mode':'plain'},csrf,422)
-  version=call('config.save',{'id':1,'content':{'domains':['https://example.com'],'config_version':'1'},'mode':'plain','summary':'native'},csrf)['data']
+  version=call('config.save',{'id':1,'content':{'domains':['https://example.com'],'config_version':1},'mode':'plain','summary':'native'},csrf)['data']
   preview=call('config.preview',{'id':version},csrf)['data'];assert preview['checksum']==hashlib.sha256(preview['payload'].encode()).hexdigest()
   clone=call('config.clone',{'id':1},csrf)['data'];assert clone==2
   call('config.settings',{'xor_key':'test-xor'},csrf)

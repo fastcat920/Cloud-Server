@@ -12,7 +12,9 @@ final class Plans
             $s['templates'] ??= [];
             $s['plans'] ??= [];
             if (!$s['templates']) {
-                $s['templates'][] = ['id' => 1,'name' => '原有配置结构','legacy_validation' => true,'schema' => self::infer($s['versions'][0]['content'] ?? Configs::defaults())];
+                $initial = $s['versions'][0]['content'] ?? Configs::defaults();
+                $native = $initial === Configs::defaults();
+                $s['templates'][] = $native ? self::defaultTemplate(1) : ['id' => 1,'name' => '原有配置结构','legacy_validation' => true,'schema' => self::infer($initial)];
             }
             if (!$s['plans']) {
                 $s['plans'][] = ['id' => 1,'name' => '默认客户端配置','clients' => '原有客户端','template_id' => 1,'targets' => array_column($s['targets'], 'id')];
@@ -23,9 +25,45 @@ final class Plans
                 $v['revision'] ??= $v['version'];
                 $v['schema'] ??= self::infer($v['content']);
                 $v['legacy_validation'] ??= ($s['templates'][0]['legacy_validation'] ?? false);
+                $v['oss_validation'] ??= (Store::find($s, 'templates', $v['template_id'])['oss_validation'] ?? false);
             }
             unset($v);
+            $builtIn = null;
+            foreach ($s['templates'] as $template) {
+                if (($template['builtin'] ?? '') === 'fastcat-oss-v1') {
+                    $builtIn = $template['id'];
+                    break;
+                }
+            }
+            if ($builtIn === null) {
+                $builtIn = Store::id($s, 'templates');
+                $s['templates'][] = self::defaultTemplate($builtIn);
+                foreach ($s['plans'] as &$plan) {
+                    $previous = Store::find($s, 'templates', $plan['template_id']);
+                    if ($previous['legacy_validation'] ?? false) {
+                        $plan['template_id'] = $builtIn;
+                    }
+                }
+                unset($plan);
+            }
+
         });
+    }
+    private static function defaultTemplate(int $id): array
+    {
+        $build = function (mixed $value) use (&$build): array {
+            $schema = self::infer($value);
+            $schema['default'] = $value;
+            if (($schema['type'] ?? '') === 'object') {
+                foreach ($value as $key => $child) {
+                    $schema['properties'][$key] = $build($child);
+                }
+            } elseif (($schema['type'] ?? '') === 'array') {
+                $schema['items'] = isset($value[0]) ? self::infer($value[0]) : ['type' => 'string'];
+            }
+            return $schema;
+        };
+        return ['id' => $id, 'name' => 'FastCat OSS 默认结构', 'builtin' => 'fastcat-oss-v1', 'legacy_validation' => false, 'oss_validation' => true, 'schema' => $build(Configs::defaults())];
     }
     public static function infer(mixed $value): array
     {

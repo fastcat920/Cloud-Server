@@ -11,7 +11,7 @@ final class Configs
     }
     public static function defaults(): array
     {
-        return ['config_version' => '1','panel_type' => 'v2board','api_prefix' => '/api/v1','domains' => [],'gateway_urls' => [],'contact' => ['website' => []],'features' => array_fill_keys(['balance_enabled','devices_enabled','gift_card_enabled','join_group_enabled','knowledge_base_enabled','orders_enabled','tickets_enabled','traffic_details_enabled'], true),'update' => ['schema_version' => 2,'platforms' => new \stdClass()],'latency' => ['display_discount_percent' => 0]];
+        return json_decode(file_get_contents(__DIR__.'/client-defaults.json'), true, 32, JSON_THROW_ON_ERROR);
     }
     public static function canonical(array|object $content, array $orders = [], bool $preserveOrder = false): string
     {

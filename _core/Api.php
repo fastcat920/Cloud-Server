@@ -631,6 +631,7 @@ final class Api
                 $r['schema'] = $template['schema'];
                 $r['template_id'] = $templateId;
                 $r['legacy_validation'] = $template['legacy_validation'] ?? false;
+                $r['oss_validation'] = $template['oss_validation'] ?? false;
             }
             if (array_key_exists('schema', $this->input)) {
                 $schema = $this->input['schema'];
@@ -653,7 +654,7 @@ final class Api
                 }
                 $r['field_order'] = $order;
             }
-            if ($r['legacy_validation'] ?? false) {
+            if (($r['legacy_validation'] ?? false) || ($r['oss_validation'] ?? false)) {
                 Configs::validate($content);
             }
             $r['revision'] ??= 1 + max(array_merge([0], array_column(array_filter($s['versions'], fn ($v) => ($v['plan_id'] ?? 1) === $planId), 'revision')));

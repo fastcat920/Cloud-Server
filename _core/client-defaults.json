@@ -1,0 +1,145 @@
+{
+  "config_version": 1001,
+  "panel_type": "v2board",
+  "api_prefix": "/api/v1",
+  "domains": [
+    "https://panel1.example.com",
+    "https://panel2.example.com"
+  ],
+  "gateway_urls": [
+    "https://gateway1.example.com",
+    "https://gateway2.example.com"
+  ],
+  "legal": {
+    "privacy_policy_url": "https://www.example.com/privacy",
+    "terms_of_service_url": "https://www.example.com/terms"
+  },
+  "contact": {
+    "website": [
+      "https://www.example.com"
+    ],
+    "invite_domain": "https://invite.example.com",
+    "fastcat_support": {
+      "enabled": true,
+      "base_url": "https://support.example.com",
+      "app_key": "填写现有客服SDK的AppKey"
+    }
+  },
+  "update": {
+    "schema_version": 2,
+    "platforms": {
+      "android": {
+        "enabled": true,
+        "source": "direct",
+        "latest_version": "3.6.3",
+        "build": 9,
+        "force": false,
+        "changelog": {
+          "zh_CN": "安卓手机及安卓TV：填写统一更新说明",
+          "en_US": "Android phones and Android TV: Enter shared release notes"
+        },
+        "artifacts": {
+          "arm64": {
+            "url": "https://downloads.example.com/FastCat-Android-3.6.3-arm64-v8a.apk",
+            "package_type": "apk",
+            "sha256": "替换为该安装包的64位SHA256",
+            "size": 0
+          }
+        },
+        "min_supported_version": "3.6.0"
+      },
+      "ios": {
+        "enabled": true,
+        "source": "app_store",
+        "latest_version": "3.6.3",
+        "build": 9,
+        "force": false,
+        "app_id": "填写对应的AppStore数字ID",
+        "changelog": {
+          "zh_CN": "ios：填写该客户端的更新说明",
+          "en_US": "ios: Enter release notes for this client"
+        },
+        "min_supported_version": "3.6.0"
+      },
+      "tvos": {
+        "enabled": true,
+        "source": "app_store",
+        "latest_version": "3.6.3",
+        "build": 9,
+        "force": false,
+        "app_id": "填写对应的AppStore数字ID",
+        "changelog": {
+          "zh_CN": "tvos：填写该客户端的更新说明",
+          "en_US": "tvos: Enter release notes for this client"
+        },
+        "min_supported_version": "3.6.0"
+      },
+      "windows": {
+        "enabled": true,
+        "source": "direct",
+        "latest_version": "3.6.3",
+        "build": 9,
+        "force": false,
+        "changelog": {
+          "zh_CN": "windows：填写该客户端的更新说明",
+          "en_US": "windows: Enter release notes for this client"
+        },
+        "artifacts": {
+          "universal": {
+            "url": "https://downloads.example.com/FastCat-Windows-3.6.3-Setup.exe",
+            "package_type": "exe",
+            "sha256": "替换为该安装包的64位SHA256",
+            "size": 0
+          }
+        },
+        "min_supported_version": "3.6.0"
+      },
+      "macos": {
+        "enabled": true,
+        "source": "direct",
+        "latest_version": "3.6.3",
+        "build": 9,
+        "force": false,
+        "changelog": {
+          "zh_CN": "macos：填写该客户端的更新说明",
+          "en_US": "macos: Enter release notes for this client"
+        },
+        "artifacts": {
+          "universal": {
+            "url": "https://downloads.example.com/FastCat-macOS-3.6.3-universal.dmg",
+            "package_type": "dmg",
+            "sha256": "替换为该安装包的64位SHA256",
+            "size": 0
+          }
+        },
+        "min_supported_version": "3.6.0"
+      },
+      "linux": {
+        "enabled": true,
+        "source": "direct",
+        "latest_version": "3.6.3",
+        "build": 9,
+        "force": false,
+        "changelog": {
+          "zh_CN": "linux：填写该客户端的更新说明",
+          "en_US": "linux: Enter release notes for this client"
+        },
+        "artifacts": {
+          "x64_deb": {
+            "url": "https://downloads.example.com/FastCat-Linux-3.6.3-amd64.deb",
+            "package_type": "deb",
+            "sha256": "替换为该安装包的64位SHA256",
+            "size": 0
+          },
+          "x64_rpm": {
+            "url": "https://downloads.example.com/FastCat-Linux-3.6.3-amd64.rpm",
+            "package_type": "rpm",
+            "sha256": "替换为该安装包的64位SHA256",
+            "size": 0
+          }
+        },
+        "min_supported_version": "3.6.0"
+      }
+    }
+  }
+}

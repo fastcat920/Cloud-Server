@@ -14,7 +14,7 @@ jobs:
       - name: Recursive configuration form tests
         run: node tests/config-form.mjs && node tests/config-edit.mjs
       - name: Native unit tests
-        run: php tests/unit.php
+        run: php tests/unit.php && php tests/default-template.php
       - name: Isolated HTTP integration tests
         run: PHP_BINARY=php python3 tests/integration.py
       - name: Same-directory deployment and update tests

@@ -660,7 +660,7 @@ function configsView() {
     templates: "结构模板",
     security: "加密与签名",
   };
-  const controls = `<div class="toolbar">${button("新建方案", "plan.edit", {}, "", "plus")}${button("方案设置", "plan.edit", { id: plan?.id })}${button("新建草稿", "config.new", {}, "", "plus")}${r ? button("对比修订", "config.diff", { id: r.id }) : ""}${r ? button("预览", "config.preview", { id: r.id }) : ""}</div>`;
+  const controls = `<div class="toolbar">${button("新建方案", "plan.edit", {}, "", "plus")}${button("方案设置", "plan.edit", { id: plan?.id })}${button("新建草稿", "config.new", {}, "", "plus")}${button("按默认模板新建", "config.fromtemplate")}${r ? button("对比修订", "config.diff", { id: r.id }) : ""}${r ? button("预览", "config.preview", { id: r.id }) : ""}</div>`;
   const versions = state.versions.filter((v) => v.plan_id === plan?.id);
   return (
     pageHead(controls) +
@@ -1366,8 +1366,9 @@ const actions = {
     editorMode = editorMode === "json" ? "form" : "json";
     render();
   },
-  "config.new": async () => {
-    const base = currentVersion();
+  "config.fromtemplate": () => actions["config.new"]({ fresh: true }),
+  "config.new": async (options = {}) => {
+    const base = options.fresh ? null : currentVersion();
     configId = await api("config.save", {
       plan_id: planId,
       template_id: activePlan()?.template_id,
@@ -1743,7 +1744,7 @@ Object.assign(actions, {
           ? check(
               "copy_source",
               `以当前已保存修订 r${source.revision} 为基础（保留原结构）`,
-              true,
+              false,
             )
           : "") +
         field(
@@ -1757,7 +1758,9 @@ Object.assign(actions, {
           "template_id",
           "新修订默认结构模板",
           state.templates.map((t) => ({ value: t.id, label: t.name })),
-          p?.template_id || source?.template_id,
+          p?.template_id ||
+            state.templates.find((t) => t.builtin === "fastcat-oss-v1")?.id ||
+            source?.template_id,
         ) +
         state.targets
           .map((t) =>
