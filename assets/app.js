@@ -1,4 +1,10 @@
 import {
+  deleteParameter,
+  moveParameter,
+  atPath,
+  orderedKeys,
+} from "./config-edit.js";
+import {
   configFields,
   readFields,
   defaultValue,
@@ -696,7 +702,8 @@ function configsView() {
 }
 function schemaFields(r) {
   return (
-    configFields(r.content, r.schema) +
+    `<p class="help">拖动 ↕ 或使用上移、下移调整同组顺序。对象字段排序用于表单展示；数组排序会改变客户端读取顺序。彻底删除及排序需保存修订后生效。</p>` +
+    configFields(r.content, r.schema, [], r.field_order || {}) +
     button("添加参数", "tree.add", { path: "[]" }, "text", "plus")
   );
 }
@@ -879,6 +886,9 @@ function dirtyConfig() {
   if (!form || !r) return false;
   try {
     return (
+      JSON.stringify(r.schema) !== JSON.stringify(r._savedSchema || r.schema) ||
+      JSON.stringify(r.field_order || {}) !==
+        JSON.stringify(r._savedOrder || r.field_order || {}) ||
       JSON.stringify(configContent(form)) !==
         JSON.stringify(r._savedContent || r.content) ||
       form.elements.mode.value !== (r._savedMode || r.mode) ||
@@ -897,6 +907,8 @@ async function saveCurrentConfig() {
     plan_id: planId,
     template_id: currentVersion().template_id,
     content: configContent(form),
+    schema: currentVersion().schema,
+    field_order: currentVersion().field_order || {},
     mode: data.mode,
     summary: data.summary,
   });
@@ -1601,6 +1613,8 @@ function captureTree() {
     form = document.querySelector("#config-form");
   const content = configContent(form);
   r._savedContent ??= structuredClone(r.content);
+  r._savedSchema ??= structuredClone(r.schema);
+  r._savedOrder ??= structuredClone(r.field_order || {});
   r._savedMode ??= r.mode;
   r._savedSummary ??= r.summary || "";
   r.content = content;
@@ -1610,12 +1624,20 @@ function captureTree() {
 }
 Object.assign(actions, {
   "tree.remove": (d) => {
-    const r = captureTree(),
-      path = JSON.parse(d.path);
-    let parent = r.content;
-    for (const key of path.slice(0, -1)) parent = parent[key];
-    if (Array.isArray(parent)) parent.splice(Number(path.at(-1)), 1);
-    else delete parent[path.at(-1)];
+    const path = JSON.parse(d.path);
+    if (
+      !window.confirm(
+        "彻底删除「" +
+          path.join(" / ") +
+          "」及其子项和当前修订的字段定义？必填约束也会移除。保存后生效，其他方案、共享模板和历史修订不受影响。",
+      )
+    )
+      return;
+    deleteParameter(captureTree(), path);
+    render();
+  },
+  "tree.move": (d) => {
+    moveParameter(captureTree(), JSON.parse(d.path), Number(d.index));
     render();
   },
   "tree.add": (d) => {
@@ -2061,3 +2083,49 @@ async function start() {
   }
 }
 start();
+
+let draggedConfigPath = null;
+document.addEventListener("dragstart", (event) => {
+  const handle = event.target.closest("[data-drag-path]");
+  if (!handle) return;
+  draggedConfigPath = JSON.parse(handle.dataset.dragPath);
+  event.dataTransfer.setData("text/plain", handle.dataset.dragPath);
+  event.dataTransfer.effectAllowed = "move";
+});
+document.addEventListener("dragover", (event) => {
+  const target = event.target.closest("[data-tree-path]");
+  if (!target || !draggedConfigPath) return;
+  const path = JSON.parse(target.dataset.treePath);
+  if (
+    JSON.stringify(path.slice(0, -1)) ===
+    JSON.stringify(draggedConfigPath.slice(0, -1))
+  )
+    event.preventDefault();
+});
+document.addEventListener("drop", (event) => {
+  const target = event.target.closest("[data-tree-path]");
+  if (!target || !draggedConfigPath) return;
+  const path = JSON.parse(target.dataset.treePath),
+    from = draggedConfigPath;
+  draggedConfigPath = null;
+  if (JSON.stringify(path.slice(0, -1)) !== JSON.stringify(from.slice(0, -1)))
+    return;
+  event.preventDefault();
+  const r = captureTree(),
+    parentPath = path.slice(0, -1),
+    parent = atPath(r.content, parentPath);
+  let schema = r.schema;
+  let cursor = r.content;
+  for (const key of parentPath) {
+    schema = Array.isArray(cursor) ? schema?.items : schema?.properties?.[key];
+    cursor = cursor[key];
+  }
+  const keys = Array.isArray(parent)
+    ? Object.keys(parent)
+    : orderedKeys(parent, schema, r.field_order, parentPath);
+  moveParameter(r, from, keys.indexOf(path.at(-1)));
+  render();
+});
+document.addEventListener("dragend", () => {
+  draggedConfigPath = null;
+});

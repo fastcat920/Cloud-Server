@@ -98,7 +98,7 @@ const removedGroup = configFields(
 assert(removedGroup.includes("未加入配置的模板字段（1）"));
 assert(
   !removedGroup.includes(
-    'data-path="[&quot;update&quot;,&quot;platforms&quot;]"',
+    'data-tree-path="[&quot;update&quot;,&quot;platforms&quot;]"',
   ),
 );
 assert(removedGroup.includes("当前没有值，不会输出到配置文件"));

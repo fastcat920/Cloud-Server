@@ -85,6 +85,26 @@ with tempfile.TemporaryDirectory(prefix='cloud-native-http-') as directory:
   all_versions=call('overview')['data']['versions'];assert next(v for v in all_versions if v['id']==1)['status']=='published'
   new_backup=call('backup',{},csrf,binary=True);multipart('restore',{'confirmation':'恢复备份'},new_backup)
   restored=call('overview')['data'];assert len(restored['plans'])==2 and len(restored['templates'])==2
+  # Revision-local deletion and ordering survive storage and cloning without changing templates/history.
+  before=call('overview')['data']
+  source=next(v for v in before['versions'] if v['id']==v2)
+  edited_schema=json.loads(json.dumps(source['schema']))
+  edited_schema['properties'].pop('api_url',None)
+  edited_schema['required']=[k for k in edited_schema.get('required',[]) if k!='api_url']
+  edited_content={k:v for k,v in source['content'].items() if k!='api_url'}
+  ordering={'[]':list(reversed(list(edited_content)))}
+  edited=call('config.save',{'id':v2,'content':edited_content,'schema':edited_schema,'field_order':ordering,'mode':'plain'},csrf)['data']
+  after=call('overview')['data'];row=next(v for v in after['versions'] if v['id']==edited)
+  assert 'api_url' not in row['content'] and 'api_url' not in row['schema']['properties'] and 'api_url' not in row['schema']['required']
+  assert row['field_order']==ordering
+  assert after['templates']==before['templates']
+  if edited!=v2:assert next(v for v in after['versions'] if v['id']==v2)==source
+  copy=call('config.clone',{'id':edited},csrf)['data']
+  cloned=next(v for v in call('overview')['data']['versions'] if v['id']==copy)
+  assert cloned['schema']==edited_schema and cloned['field_order']==ordering
+  call('config.save',{'id':edited,'content':edited_content,'mode':'plain','field_order':{'bad':['x']}},csrf,422)
+  call('config.save',{'id':edited,'content':edited_content,'mode':'plain','schema':{'type':'object','properties':{},'unsupported':True}},csrf,422)
+  print('PASS: revision-local deletion, required removal, persisted order, clone preservation and shared-template isolation')
   print('PASS: independent client plans, immutable schemas and published revisions, missing/new/unknown fields, address isolation, diff and rollback publication')
   call('password',{'old':'native-password-123','password':'new-native-password-456'},csrf)
   call('overview',expected=401)

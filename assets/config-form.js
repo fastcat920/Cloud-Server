@@ -1,3 +1,4 @@
+import { orderedKeys } from "./config-edit.js";
 import { escape as e, button, field, select, check } from "./ui.js";
 const labels = {
   update: "客户端更新配置",
@@ -56,12 +57,12 @@ export function defaultValue(spec = {}) {
     string: "",
   }[spec.type || "string"];
 }
-export function configFields(content, schema = {}, path = []) {
+export function configFields(content, schema = {}, path = [], orders = {}) {
   const array = Array.isArray(content),
     properties = schema.properties || {};
   const keys = array
     ? content.map((_, i) => String(i))
-    : [...new Set([...Object.keys(content), ...Object.keys(properties)])];
+    : orderedKeys(content, schema, orders, path);
   const missing = [];
   const fields = keys
     .map((key) => {
@@ -74,16 +75,30 @@ export function configFields(content, schema = {}, path = []) {
           (array ? `第 ${Number(key) + 1} 项` : key);
       if (!Object.hasOwn(content, key)) {
         missing.push(
-          `<div class="config-node">${e(label)} ${button("添加参数", "tree.add", { path: JSON.stringify(path), key }, "text")}${schema.required?.includes(key) ? '<small class="help">必填，保存前需添加</small>' : ""}</div>`,
+          `<div class="config-node">${e(label)} ${button("添加参数", "tree.add", { path: JSON.stringify(path), key }, "text")}${button("彻底删除", "tree.remove", { path: encoded }, "text")}${schema.required?.includes(key) ? '<small class="help">必填，保存前需添加</small>' : ""}</div>`,
         );
         return "";
       }
       const value = content[key],
         type = valueType(value),
         name = "cfg_" + encodeURIComponent(encoded);
-      const controls = button("移除", "tree.remove", { path: encoded }, "text");
+      const sorting =
+        button(
+          "上移",
+          "tree.move",
+          { path: encoded, index: keys.indexOf(key) - 1 },
+          "text",
+        ) +
+        button(
+          "下移",
+          "tree.move",
+          { path: encoded, index: keys.indexOf(key) + 1 },
+          "text",
+        );
+      const controls =
+        sorting + button("彻底删除", "tree.remove", { path: encoded }, "text");
       if (type === "object" || type === "array")
-        return `<details class="config-group" open><summary>${e(label)} <small>${e(key)} · ${type === "array" ? value.length + " 项" : "参数组"}</small></summary><div class="config-children">${configFields(value, spec, p)}<div class="toolbar">${button(type === "array" ? "添加一项" : "添加参数", "tree.add", { path: encoded }, "text", "plus")}${controls}</div></div></details>`;
+        return `<details class="config-group" data-tree-path="${e(encoded)}" open><summary><span draggable="true" class="config-drag" data-drag-path="${e(encoded)}" title="拖动调整同组顺序">↕</span> ${e(label)} <small>${e(key)} · ${type === "array" ? value.length + " 项" : "参数组"}</small></summary><div class="config-children">${configFields(value, spec, p, orders)}<div class="toolbar">${button(type === "array" ? "添加一项" : "添加参数", "tree.add", { path: encoded }, "text", "plus")}${controls}</div></div></details>`;
       let control = spec.enum
         ? select(
             name,
@@ -109,7 +124,7 @@ export function configFields(content, schema = {}, path = []) {
                     : "text",
                 type === "number" ? 'step="any" required' : "",
               );
-      return `<div class="config-node" data-config-path="${e(encoded)}" data-type="${e(type)}" data-enum="${spec.enum ? "1" : "0"}" data-name="${e(name)}">${control}<div class="toolbar"><small class="help">${e(key)}${spec.description ? " · " + e(spec.description) : ""}</small>${controls}</div></div>`;
+      return `<div class="config-node" data-tree-path="${e(encoded)}" data-config-path="${e(encoded)}" data-type="${e(type)}" data-enum="${spec.enum ? "1" : "0"}" data-name="${e(name)}"><span draggable="true" class="config-drag" data-drag-path="${e(encoded)}" title="拖动调整同组顺序">↕</span>${control}<div class="toolbar"><small class="help">${e(key)}${spec.description ? " · " + e(spec.description) : ""}</small>${controls}</div></div>`;
     })
     .join("");
   return (

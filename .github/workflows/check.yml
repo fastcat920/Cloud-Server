@@ -12,7 +12,7 @@ jobs:
       - name: Check JavaScript syntax
         run: node --check assets/app.js && node --check assets/ui.js && node --check assets/config-form.js
       - name: Recursive configuration form tests
-        run: node tests/config-form.mjs
+        run: node tests/config-form.mjs && node tests/config-edit.mjs
       - name: Native unit tests
         run: php tests/unit.php
       - name: Isolated HTTP integration tests

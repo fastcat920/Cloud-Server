@@ -1134,3 +1134,16 @@ dialog::backdrop {
 .config-available > summary {
   cursor: pointer;
 }
+.config-drag {
+  display: inline-block;
+  cursor: grab;
+  color: var(--muted);
+  padding: 4px 10px;
+  user-select: none;
+}
+.config-drag:active {
+  cursor: grabbing;
+}
+.config-node > .config-drag {
+  float: right;
+}

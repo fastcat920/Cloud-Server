@@ -632,6 +632,27 @@ final class Api
                 $r['template_id'] = $templateId;
                 $r['legacy_validation'] = $template['legacy_validation'] ?? false;
             }
+            if (array_key_exists('schema', $this->input)) {
+                $schema = $this->input['schema'];
+                if (!is_array($schema)) {
+                    throw new ApiError('修订结构格式无效');
+                }
+                Plans::checkSchema($schema);
+                $r['schema'] = $schema;
+            }
+            if (array_key_exists('field_order', $this->input)) {
+                $order = $this->input['field_order'];
+                if (!is_array($order) || count($order) > 2000) {
+                    throw new ApiError('字段排序格式无效');
+                }
+                foreach ($order as $path => $keys) {
+                    $parts = json_decode((string)$path, true);
+                    if (!is_array($parts) || !array_is_list($parts) || count($parts) > 32 || array_filter($parts, fn ($v) => !is_string($v)) || !is_array($keys) || !array_is_list($keys) || count($keys) > 2000 || array_filter($keys, fn ($v) => !is_string($v)) || count(array_unique($keys)) !== count($keys)) {
+                        throw new ApiError('字段排序格式无效');
+                    }
+                }
+                $r['field_order'] = $order;
+            }
             if ($r['legacy_validation'] ?? false) {
                 Configs::validate($content);
             }
