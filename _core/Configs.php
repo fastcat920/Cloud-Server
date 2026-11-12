@@ -91,8 +91,18 @@ final class Configs
                 if (($row['source'] ?? 'direct') === 'app_store' && empty($row['app_id'])) {
                     throw new \RuntimeException($platform.' 缺少 App Store ID');
                 }
-                if (($row['source'] ?? 'direct') !== 'app_store' && (!filter_var($row['url'] ?? '', FILTER_VALIDATE_URL) || !in_array(parse_url($row['url'], PHP_URL_SCHEME), ['http','https'], true))) {
-                    throw new \RuntimeException($platform.' 下载地址无效');
+                if (($row['source'] ?? 'direct') !== 'app_store') {
+                    $artifacts = $row['artifacts'] ?? null;
+                    $downloads = $artifacts === null ? [['url' => $row['url'] ?? '']] : $artifacts;
+                    if (!is_array($downloads) || !$downloads) {
+                        throw new \RuntimeException($platform.' 缺少安装包');
+                    }
+                    foreach ($downloads as $artifact) {
+                        $url = is_array($artifact) ? ($artifact['url'] ?? '') : '';
+                        if (!is_string($url) || !filter_var($url, FILTER_VALIDATE_URL) || !in_array(parse_url($url, PHP_URL_SCHEME), ['http','https'], true)) {
+                            throw new \RuntimeException($platform.' 下载地址无效');
+                        }
+                    }
                 }
             }
         }

@@ -1092,3 +1092,35 @@ dialog::backdrop {
     max-width: 100%;
   }
 }
+
+.config-group {
+  grid-column: 1 / -1;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  margin: 8px 0;
+}
+.config-group > summary {
+  cursor: pointer;
+  padding: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.config-group > summary small {
+  color: var(--muted);
+  font-weight: 400;
+  margin-left: 8px;
+}
+.config-children {
+  padding: 0 14px 14px;
+  border-top: 1px solid var(--line);
+}
+.config-node {
+  min-width: 0;
+  padding: 12px 0;
+  overflow-wrap: anywhere;
+}
+.config-node .toolbar {
+  justify-content: space-between;
+}

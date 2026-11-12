@@ -10,7 +10,9 @@ jobs:
       - name: Check PHP syntax
         run: find _core tests -name '*.php' ! -name view.php -print0 | xargs -0 -n1 php -l && php -l index.php
       - name: Check JavaScript syntax
-        run: node --check assets/app.js && node --check assets/ui.js
+        run: node --check assets/app.js && node --check assets/ui.js && node --check assets/config-form.js
+      - name: Recursive configuration form tests
+        run: node tests/config-form.mjs
       - name: Native unit tests
         run: php tests/unit.php
       - name: Isolated HTTP integration tests

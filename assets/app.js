@@ -1,3 +1,4 @@
+import { configFields, readFields, defaultValue } from "./config-form.js";
 import {
   escape as e,
   icon,
@@ -688,60 +689,10 @@ function configsView() {
   );
 }
 function schemaFields(r) {
-  const properties = r.schema?.properties || {},
-    content = r.content || {},
-    keys = [...new Set([...Object.keys(properties), ...Object.keys(content)])];
-  return keys
-    .map((key, i) => {
-      const spec = Object.hasOwn(properties, key) ? properties[key] : {},
-        exists = Object.hasOwn(content, key),
-        value = content[key],
-        type =
-          spec.type ||
-          (typeof value === "boolean"
-            ? "boolean"
-            : typeof value === "number"
-              ? "number"
-              : typeof value === "string"
-                ? "string"
-                : "object");
-      if (!exists)
-        return `<div class="field"><span>${e(spec.title || key)}</span>${button("添加参数", "schema.add", { key }, "text")}<small class="help">当前修订未包含此参数，不会自动补入。</small></div>`;
-      const name = "parameter_" + i;
-      let control;
-      if (spec.enum)
-        control = select(
-          name,
-          spec.title || key,
-          spec.enum.map((v) => ({
-            value: JSON.stringify(v),
-            label: String(v),
-          })),
-          JSON.stringify(value),
-        );
-      else if (type === "boolean")
-        control = check(name, spec.title || key, value);
-      else
-        control = field(
-          name,
-          spec.title || key,
-          ["object", "array", "null"].includes(type)
-            ? JSON.stringify(value, null, 2)
-            : value,
-          ["object", "array", "null"].includes(type)
-            ? "textarea"
-            : type === "number" || type === "integer"
-              ? "number"
-              : "text",
-          ["object", "array", "null"].includes(type)
-            ? 'class="code" style="min-height:110px"'
-            : type === "number"
-              ? 'step="any"'
-              : "",
-        );
-      return `<div data-parameter="${e(key)}" data-type="${e(type)}" data-name="${name}" data-enum="${spec.enum ? "1" : ""}">${control}<div class="toolbar"><small class="help mono">${e(key)}${spec.description ? " · " + e(spec.description) : ""}${properties[key] ? "" : " · 模板外参数，原样保留"}</small>${button("移除此参数", "schema.remove", { key }, "text")}</div></div>`;
-    })
-    .join("");
+  return (
+    configFields(r.content, r.schema) +
+    button("添加参数", "tree.add", { path: "[]" }, "text", "plus")
+  );
 }
 function editorView(r) {
   return panel(
@@ -914,20 +865,7 @@ async function queryResources() {
 function configContent(form) {
   const data = Object.fromEntries(new FormData(form));
   if (editorMode === "json") return JSON.parse(data.content);
-  const content = structuredClone(currentVersion()?.content || {});
-  for (const node of form.querySelectorAll("[data-parameter]")) {
-    const { parameter: key, type, name, enum: isEnum } = node.dataset;
-    const value = data[name];
-    if (isEnum) content[key] = JSON.parse(value);
-    else if (type === "boolean") content[key] = data[name] === "on";
-    else if (["object", "array", "null"].includes(type))
-      content[key] = JSON.parse(value);
-    else if (type === "number" || type === "integer") {
-      if (value === "") throw new Error(key + " 需要填写数值");
-      content[key] = Number(value);
-    } else content[key] = value;
-  }
-  return content;
+  return readFields(form, currentVersion()?.content || {});
 }
 function dirtyConfig() {
   const form = document.querySelector("#config-form"),
@@ -1652,7 +1590,94 @@ function localDiff(a, b, path = "$") {
     );
   return [{ path, kind: "修改", before: a, after: b }];
 }
+function captureTree() {
+  const r = currentVersion(),
+    form = document.querySelector("#config-form");
+  const content = configContent(form);
+  r._savedContent ??= structuredClone(r.content);
+  r._savedMode ??= r.mode;
+  r._savedSummary ??= r.summary || "";
+  r.content = content;
+  r.mode = form.elements.mode.value;
+  r.summary = form.elements.summary.value;
+  return r;
+}
 Object.assign(actions, {
+  "tree.remove": (d) => {
+    const r = captureTree(),
+      path = JSON.parse(d.path);
+    let parent = r.content;
+    for (const key of path.slice(0, -1)) parent = parent[key];
+    if (Array.isArray(parent)) parent.splice(Number(path.at(-1)), 1);
+    else delete parent[path.at(-1)];
+    render();
+  },
+  "tree.add": (d) => {
+    const r = captureTree(),
+      path = JSON.parse(d.path);
+    let parent = r.content,
+      spec = r.schema || {};
+    for (const key of path) {
+      spec = Array.isArray(parent)
+        ? spec.items || {}
+        : spec.properties?.[key] || {};
+      parent = parent[key];
+    }
+    const known = d.key !== undefined ? spec.properties?.[d.key] : null;
+    modal(
+      "添加参数",
+      "对象和数组可继续逐项填写。参数名应与客户端要求一致。",
+      (Array.isArray(parent) || known
+        ? ""
+        : field("key", "参数名称", "", "text", "required")) +
+        (known
+          ? ""
+          : select(
+              "type",
+              "参数类型",
+              ["string", "number", "boolean", "object", "array", "null"].map(
+                (value) => ({
+                  value,
+                  label: {
+                    string: "文本",
+                    number: "数字",
+                    boolean: "开关",
+                    object: "参数组",
+                    array: "列表",
+                    null: "空值",
+                  }[value],
+                }),
+              ),
+              spec.items?.type || "string",
+            )),
+      async (data) => {
+        const key = Array.isArray(parent)
+          ? String(parent.length)
+          : (d.key ?? String(data.get("key")).trim());
+        if (!key) throw new Error("请填写参数名称");
+        if (Object.hasOwn(parent, key))
+          throw new Error("参数已存在，请直接编辑");
+        if (
+          !Array.isArray(parent) &&
+          !known &&
+          spec.additionalProperties === false
+        )
+          throw new Error("当前结构禁止额外参数，请先升级结构模板");
+        const itemSpec =
+          known ||
+          (Array.isArray(parent) && spec.items?.type
+            ? spec.items
+            : { type: data.get("type") });
+        Object.defineProperty(parent, key, {
+          value: defaultValue(itemSpec),
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+        render();
+      },
+    );
+  },
   "config.localdiff": () => {
     const r = currentVersion();
     showJson(
