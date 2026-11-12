@@ -138,3 +138,56 @@ export function readFields(form, original) {
   }
   return result;
 }
+
+export function parameterInput(spec = {}) {
+  const value = defaultValue(spec),
+    type = spec.type || "string";
+  if (spec.enum)
+    return select(
+      "value",
+      "参数值",
+      spec.enum.map((v) => ({ value: JSON.stringify(v), label: String(v) })),
+      JSON.stringify(spec.enum.includes(value) ? value : spec.enum[0]),
+    );
+  if (type === "object" || type === "array")
+    return (
+      '<p class="help">创建后会展开' +
+      (type === "array"
+        ? "列表，点击「添加一项」填写内容。"
+        : "参数组，点击「添加参数」逐项填写内容。") +
+      "</p>"
+    );
+  if (type === "null")
+    return '<p class="help">此参数将保存为空值（null）。</p>';
+  if (type === "boolean") return check("value", "参数值：开启", value);
+  return field(
+    "value",
+    "参数值",
+    value,
+    type === "number" || type === "integer" ? "number" : "text",
+    type === "number"
+      ? 'step="any" required'
+      : type === "integer"
+        ? 'step="1" required'
+        : "",
+  );
+}
+export function parameterValue(data, spec = {}) {
+  if (spec.enum) return JSON.parse(data.get("value"));
+  const type = spec.type || "string";
+  if (type === "object" || type === "array" || type === "null")
+    return defaultValue(spec);
+  if (type === "boolean") return data.has("value");
+  const value = data.get("value") ?? "";
+  if (type === "number" || type === "integer") {
+    const number = Number(value);
+    if (
+      value === "" ||
+      !Number.isFinite(number) ||
+      (type === "integer" && !Number.isInteger(number))
+    )
+      throw new Error("请填写有效" + (type === "integer" ? "整数" : "数字"));
+    return number;
+  }
+  return value;
+}

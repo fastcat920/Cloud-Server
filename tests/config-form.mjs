@@ -67,3 +67,19 @@ assert(!configFields({ "<script>": "<script>" }).includes("<script>"));
 console.log(
   "PASS: recursive forms, nested values, arrays, types, preservation and escaping",
 );
+const { parameterInput, parameterValue } =
+  await import("../assets/config-form.js");
+assert(parameterInput({ type: "string" }).includes('name="value"'));
+assert(parameterInput({ type: "integer" }).includes('step="1"'));
+assert(parameterInput({ type: "object" }).includes("逐项填写"));
+assert.equal(
+  parameterValue(new Map([["value", "42"]]), { type: "integer" }),
+  42,
+);
+assert.throws(() =>
+  parameterValue(new Map([["value", "1.5"]]), { type: "integer" }),
+);
+assert.equal(
+  parameterValue(new Map([["value", "hello"]]), { type: "string" }),
+  "hello",
+);

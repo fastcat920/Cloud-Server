@@ -1,4 +1,10 @@
-import { configFields, readFields, defaultValue } from "./config-form.js";
+import {
+  configFields,
+  readFields,
+  defaultValue,
+  parameterInput,
+  parameterValue,
+} from "./config-form.js";
 import {
   escape as e,
   icon,
@@ -1624,32 +1630,45 @@ Object.assign(actions, {
       parent = parent[key];
     }
     const known = d.key !== undefined ? spec.properties?.[d.key] : null;
+    const fixed =
+      known || (Array.isArray(parent) && spec.items?.type ? spec.items : null);
+    const getSpec = (type) => fixed || { type: type || "string" };
     modal(
       "添加参数",
-      "对象和数组可继续逐项填写。参数名应与客户端要求一致。",
-      (Array.isArray(parent) || known
+      "填写参数值后添加；参数组和列表创建后可继续逐项填写。",
+      (Array.isArray(parent)
         ? ""
-        : field("key", "参数名称", "", "text", "required")) +
-        (known
+        : known
+          ? `<p>参数：${e(known.title || d.key)}（${e(d.key)}）</p>`
+          : field("key", "参数名称", "", "text", "required")) +
+        (fixed
           ? ""
           : select(
               "type",
               "参数类型",
-              ["string", "number", "boolean", "object", "array", "null"].map(
-                (value) => ({
-                  value,
-                  label: {
-                    string: "文本",
-                    number: "数字",
-                    boolean: "开关",
-                    object: "参数组",
-                    array: "列表",
-                    null: "空值",
-                  }[value],
-                }),
-              ),
-              spec.items?.type || "string",
-            )),
+              [
+                "string",
+                "number",
+                "integer",
+                "boolean",
+                "object",
+                "array",
+                "null",
+              ].map((value) => ({
+                value,
+                label: {
+                  string: "文本",
+                  number: "数字",
+                  integer: "整数",
+                  boolean: "开关",
+                  object: "参数组",
+                  array: "列表",
+                  null: "空值",
+                }[value],
+              })),
+              "string",
+            )) +
+        `<div id="parameter-value">${parameterInput(getSpec())}</div>`,
       async (data) => {
         const key = Array.isArray(parent)
           ? String(parent.length)
@@ -1663,13 +1682,8 @@ Object.assign(actions, {
           spec.additionalProperties === false
         )
           throw new Error("当前结构禁止额外参数，请先升级结构模板");
-        const itemSpec =
-          known ||
-          (Array.isArray(parent) && spec.items?.type
-            ? spec.items
-            : { type: data.get("type") });
         Object.defineProperty(parent, key, {
-          value: defaultValue(itemSpec),
+          value: parameterValue(data, getSpec(data.get("type"))),
           enumerable: true,
           writable: true,
           configurable: true,
@@ -1677,6 +1691,13 @@ Object.assign(actions, {
         render();
       },
     );
+    document
+      .querySelector('#modal-form select[name="type"]')
+      ?.addEventListener("change", (event) => {
+        document.querySelector("#parameter-value").innerHTML = parameterInput(
+          getSpec(event.target.value),
+        );
+      });
   },
   "config.localdiff": () => {
     const r = currentVersion();
