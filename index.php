@@ -28,7 +28,7 @@ if (isset($_GET['asset'])) {
     exit;
 }
 if (isset($_GET['api'])) {
-    foreach (['Store','Security','Cloud','Objects','Configs','Plans','Importer','Api'] as $file) {
+    foreach (['Store','Security','Cloud','Objects','Configs','Plans','Checks','Releases','Importer','Api'] as $file) {
         require_once __DIR__.'/_core/'.$file.'.php';
     }
     try {

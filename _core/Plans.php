@@ -126,7 +126,7 @@ final class Plans
             throw new \RuntimeException('结构模板必须包含 type: object 和 properties');
         }
         $walk = function (array $node, int $depth = 0) use (&$walk) {
-            if (isset($node['properties']) && !is_array($node['properties'])) {
+            if (isset($node['properties']) && (!is_array($node['properties']) || ($node['properties'] !== [] && array_is_list($node['properties'])))) {
                 throw new \RuntimeException('properties 必须是字段定义对象');
             }
             if (isset($node['enum']) && (!is_array($node['enum']) || !array_is_list($node['enum']) || !$node['enum'])) {
@@ -165,6 +165,12 @@ final class Plans
             if (isset($node['items'])) {
                 $walk($node['items'], $depth + 1);
             }
+            if (isset($node['minimum']) && !is_int($node['minimum']) && !is_float($node['minimum'])) throw new \RuntimeException('minimum 必须是数字');
+            foreach ($node['required'] ?? [] as $key) if (!array_key_exists($key,$node['properties'] ?? [])) throw new \RuntimeException('必填字段没有定义：'.$key);
+            if (isset($node['properties']) && ($node['type'] ?? '') !== 'object') throw new \RuntimeException('properties 只能用于对象');
+            if (isset($node['items']) && ($node['type'] ?? '') !== 'array') throw new \RuntimeException('items 只能用于数组');
+            if (array_key_exists('default',$node)) self::validate($node['default'],$node);
+
         };
         $walk($schema);
     }

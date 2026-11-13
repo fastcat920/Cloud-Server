@@ -660,7 +660,7 @@ function configsView() {
     templates: "结构模板",
     security: "加密与签名",
   };
-  const controls = `<div class="toolbar">${button("新建方案", "plan.edit", {}, "", "plus")}${button("方案设置", "plan.edit", { id: plan?.id })}${button("新建草稿", "config.new", {}, "", "plus")}${button("按默认模板新建", "config.fromtemplate")}${r ? button("对比修订", "config.diff", { id: r.id }) : ""}${r ? button("预览", "config.preview", { id: r.id }) : ""}</div>`;
+  const controls = `<div class="toolbar">${button("新建方案", "plan.edit", {}, "", "plus")}${button("方案设置", "plan.edit", { id: plan?.id })}${button("新建草稿", "config.new", {}, "", "plus")}${button("按默认模板新建", "config.fromtemplate")}${r ? button("对比修订", "config.diff", { id: r.id }) : ""}${r ? button("预览", "config.preview", { id: r.id }) : ""}${r ? button("发布前检查", "config.check", { id: r.id }) : ""}</div>`;
   const versions = state.versions.filter((v) => v.plan_id === plan?.id);
   return (
     pageHead(controls) +
@@ -795,7 +795,17 @@ function eventsView() {
 function settingsView() {
   return (
     pageHead() +
-    `<div class="settings-grid">${panel("登录安全", `<form id="password-form" class="panel-body">${field("old", "原密码", "", "password", 'required autocomplete="current-password"')}${field("password", "新密码", "", "password", 'required minlength="12" autocomplete="new-password"')}<button class="button primary" type="submit">修改密码并重新登录</button></form>`)}${panel("数据备份", `<div class="panel-body"><p>备份包含云凭证和解密密钥，请保存在可信位置。Git 更新不会修改你的本地数据。</p><div class="toolbar">${button("下载完整备份", "backup", {}, "", "download")}${button("恢复备份", "restore", {}, "danger")}</div><div class="section-label">从旧版迁移</div><p>支持导入旧版 state.json 和 APP_KEY。请在新安装中导入，不覆盖已添加的云账号。</p>${button("导入旧版数据", "import.v1", {}, "", "folder")}</div>`)}${panel("运行环境", `<div class="panel-body"><p>原生 PHP ${e(boot.environment.php)} · 无数据库 · 无 Composer · 无前端构建</p>${boot.environment.missing.length ? `<div class="notice warn">请启用：${e(boot.environment.missing.join("、"))}</div>` : badge("运行环境就绪", "good")}<div class="section-label">更新项目</div><code>git pull --ff-only origin main</code><p style="margin-top:18px">就在当前网站目录执行，不套子目录。更新前请先从设置下载备份；_core/data 不会被 Git 覆盖。</p></div>`)}</div>`
+    `<div class="settings-grid">${panel("登录安全", `<form id="password-form" class="panel-body">${field("old", "原密码", "", "password", 'required autocomplete="current-password"')}${field("password", "新密码", "", "password", 'required minlength="12" autocomplete="new-password"')}<button class="button primary" type="submit">修改密码并重新登录</button></form>`)}${panel(
+      "数据备份",
+      `<div class="panel-body"><p>备份包含云凭证和解密密钥，请保存在可信位置。Git 更新不会修改你的本地数据。</p><div class="toolbar">${button("下载完整备份", "backup", {}, "", "download")}${button("恢复备份", "restore", {}, "danger")}</div>${
+        (state.restore_backups || []).length
+          ? `<div class="section-label">恢复前自动备份</div>${state.restore_backups
+              .slice(0, 20)
+              .map((name) => button(name, "backup.local", { name }, "text"))
+              .join("")}`
+          : ""
+      }<div class="section-label">从旧版迁移</div><p>支持导入旧版 state.json 和 APP_KEY。请在新安装中导入，不覆盖已添加的云账号。</p>${button("导入旧版数据", "import.v1", {}, "", "folder")}</div>`,
+    )}${panel("运行环境", `<div class="panel-body"><p>原生 PHP ${e(boot.environment.php)} · 无数据库 · 无 Composer · 无前端构建</p>${boot.environment.missing.length ? `<div class="notice warn">请启用：${e(boot.environment.missing.join("、"))}</div>` : badge("运行环境就绪", "good")}<div class="section-label">更新项目</div><code>git pull --ff-only origin main</code><p style="margin-top:18px">就在当前网站目录执行，不套子目录。更新前请先从设置下载备份；_core/data 不会被 Git 覆盖。</p></div>`)}</div>`
   );
 }
 async function queryResources() {
@@ -905,6 +915,7 @@ async function saveCurrentConfig() {
   const data = Object.fromEntries(new FormData(form));
   configId = await api("config.save", {
     id: Number(data.id),
+    expected_token: currentVersion().edit_token,
     plan_id: planId,
     template_id: currentVersion().template_id,
     content: configContent(form),
@@ -1418,7 +1429,12 @@ const actions = {
       "关闭",
     );
   },
-  "config.publish": (d) => {
+  "config.check": async (d) => {
+    await api("config.check", { id: Number(d.id) });
+    toast("已保存修订通过结构与发布参数检查");
+  },
+  "config.publish": async (d) => {
+    await api("config.check", { id: Number(d.id) });
     const plan = activePlan();
     const targets = state.targets.filter(
       (t) => t.enabled && plan?.targets.includes(t.id),
@@ -1497,6 +1513,13 @@ const actions = {
       }
     };
   },
+  "backup.local": async (d) => {
+    await api(
+      "backup.local",
+      { name: d.name },
+      { download: d.name.replace(/\.php$/, ".json") },
+    );
+  },
   backup: async () => {
     await api(
       "backup",
@@ -1512,7 +1535,7 @@ const actions = {
   restore: () =>
     modal(
       "恢复完整备份",
-      "将覆盖当前云账号、配置和发布记录，保留当前管理员登录信息。请先下载当前备份。",
+      "将覆盖当前云账号、配置和发布记录，保留当前管理员登录信息。系统会先检查备份，并自动保存恢复前快照；失败时停止恢复。",
       field("file", "备份文件", "", "file", 'required accept=".json"') +
         field("confirmation", "输入「恢复备份」确认", "", "text", "required"),
       async (data, form) => {

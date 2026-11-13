@@ -1,7 +1,7 @@
 <?php
 
 declare(strict_types=1);
-foreach (['Store','Security','Configs','Plans'] as $name) {
+foreach (['Store','Security','Configs','Plans','Checks','Releases'] as $name) {
     require __DIR__.'/../_core/'.$name.'.php';
 }
 use CloudDesk\{Store,Configs,Plans};

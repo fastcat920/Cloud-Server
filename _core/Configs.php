@@ -90,6 +90,32 @@ final class Configs
         }
         return json_encode(['_format' => 'fastcat-config-v2','algorithm' => 'Ed25519','encoding' => 'xor+base64','payload' => $payload,'signature' => base64_encode(sodium_crypto_sign_detached($payload, $secret))], JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
     }
+    public static function preflight(array $version): void
+    {
+        Plans::checkSchema($version['schema']);
+        Plans::validate($version['content'], $version['schema']);
+        Checks::order($version['field_order'] ?? []);
+        if (($version['legacy_validation'] ?? false) || ($version['oss_validation'] ?? false)) {
+            self::validate($version['content']);
+            $walk = function (mixed $value, string $path = '$') use (&$walk): void {
+                if (is_array($value) && ($value['enabled'] ?? null) === false) return;
+                if (is_array($value)) { foreach ($value as $key => $child) $walk($child,$path.'.'.$key); }
+                elseif (is_string($value) && (preg_match('/(?:^|[.\/])example\.(?:com|org|net)(?:[\/:]|$)/i',$value) || preg_match('/填写|替换为|你的下载域名/',$value))) throw new \RuntimeException('发布前请替换示例或占位参数：'.$path);
+            };
+            $walk($version['content']);
+            foreach ($version['content']['update']['platforms'] ?? [] as $platform => $row) {
+                if (!($row['enabled'] ?? false)) continue;
+                if (!is_string($row['latest_version'] ?? null) || !preg_match('/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/',$row['latest_version'])) throw new \RuntimeException($platform.' 版本号格式无效');
+                if (!in_array($row['source'] ?? 'direct',['direct','app_store'],true)) throw new \RuntimeException($platform.' 更新来源无效');
+                if (isset($row['build']) && (!is_int($row['build']) || $row['build'] < 0)) throw new \RuntimeException($platform.' 构建号必须为非负整数');
+                if (($row['source'] ?? 'direct') === 'app_store' && !preg_match('/^[0-9]+$/',(string)($row['app_id'] ?? ''))) throw new \RuntimeException($platform.' App Store ID 必须为数字');
+                foreach ($row['artifacts'] ?? [] as $artifact) {
+                    if (!preg_match('/^[a-f0-9]{64}$/i',$artifact['sha256'] ?? '')) throw new \RuntimeException($platform.' 安装包 SHA256 无效');
+                    if (!is_int($artifact['size'] ?? null) || $artifact['size'] < 0) throw new \RuntimeException($platform.' 安装包大小必须为非负整数字节');
+                }
+            }
+        }
+    }
     public static function validate(array $content): void
     {
         foreach (array_merge($content['domains'] ?? [], $content['gateway_urls'] ?? [], $content['contact']['website'] ?? []) as $url) {

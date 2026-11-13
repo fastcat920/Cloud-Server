@@ -9,6 +9,8 @@ with tempfile.TemporaryDirectory(prefix='cloud-native-http-') as directory:
  process=subprocess.Popen([php,'-S',f'127.0.0.1:{port}','-t',str(root),str(root/'tests/router.php')],env={**os.environ,'CLOUD_DESK_DATA':directory,'CLOUD_DESK_TEST':'1'},stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
  client=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()));base=f'http://127.0.0.1:{port}/index.php?api='
  def call(action,data=None,token='',expected=200,binary=False):
+  if action=='config.save' and data and data.get('id') and 'expected_token' not in data:
+   data['expected_token']=next(v for v in call('overview')['data']['versions'] if v['id']==data['id'])['edit_token']
   request=urllib.request.Request(base+action,data=json.dumps(data).encode() if data is not None else None,headers={'Content-Type':'application/json','X-CSRF-Token':token})
   try:r=client.open(request)
   except urllib.error.HTTPError as error:r=error
@@ -28,13 +30,15 @@ with tempfile.TemporaryDirectory(prefix='cloud-native-http-') as directory:
   call('login',{'email':'owner@example.com','password':'wrong'},csrf,401)
   call('login',{'email':'owner@example.com','password':'native-password-123'},csrf)
   csrf=call('boot')['data']['csrf'];overview=call('overview')['data'];assert len(overview['versions'])==1
+  call('config.check',{'id':1},csrf,422)
+  call('config.save',{'id':1,'content':{},'mode':'plain','expected_token':None},csrf,409)
   account_id=call('account.save',{'name':'Testing <script>','provider':'aliyun','enabled':True,'key':'fake-key','secret':'fake-secret'},csrf)['data']
   overview=call('overview')['data'];assert 'credentials' not in overview['accounts'][0]
   assert 'fake-secret' not in Path(directory,'state.php').read_text()
   target_id=call('target.save',{'account_id':account_id,'name':'Test target','region':'cn-hangzhou','bucket':'test-bucket','key':'config.json','enabled':True},csrf)['data']
   call('account.delete',{'id':account_id,'confirmation':'Testing <script>'},csrf,422)
   call('config.save',{'id':1,'content':{'domains':['not a url']},'mode':'plain'},csrf,422)
-  version=call('config.save',{'id':1,'content':{'domains':['https://example.com'],'config_version':1},'mode':'plain','summary':'native'},csrf)['data']
+  version=call('config.save',{'id':1,'content':{'domains':['https://unit.test'],'config_version':1},'mode':'plain','summary':'native'},csrf)['data']
   preview=call('config.preview',{'id':version},csrf)['data'];assert preview['checksum']==hashlib.sha256(preview['payload'].encode()).hexdigest()
   clone=call('config.clone',{'id':1},csrf)['data'];assert clone==2
   call('config.settings',{'xor_key':'test-xor'},csrf)
@@ -107,6 +111,26 @@ with tempfile.TemporaryDirectory(prefix='cloud-native-http-') as directory:
   assert cloned['schema']==edited_schema and cloned['field_order']==ordering
   call('config.save',{'id':edited,'content':edited_content,'mode':'plain','field_order':{'bad':['x']}},csrf,422)
   call('config.save',{'id':edited,'content':edited_content,'mode':'plain','schema':{'type':'object','properties':{},'unsupported':True}},csrf,422)
+  # A stale edit token must reject a second writer, without overwriting the draft.
+  stale=next(v for v in call('overview')['data']['versions'] if v['id']==edited)['edit_token']
+  call('config.save',{'id':edited,'content':edited_content,'mode':'plain','summary':'writer one'},csrf)
+  call('config.save',{'id':edited,'content':edited_content,'mode':'plain','summary':'writer two','expected_token':stale},csrf,409)
+  assert next(v for v in call('overview')['data']['versions'] if v['id']==edited)['summary']=='writer one'
+  # Invalid backup must not replace anything; successful restores create protected local snapshots.
+  current=call('overview')['data']
+  exported=json.loads(call('backup',{},csrf,binary=True))
+  exported['state']['plans'][0]['template_id']=999999
+  try:multipart('restore',{'confirmation':'恢复备份'},json.dumps(exported).encode());raise AssertionError('Invalid backup accepted')
+  except urllib.error.HTTPError as error:assert error.code==422
+  assert call('overview')['data']['versions']==current['versions']
+  protected=list(Path(directory,'backups').glob('*.php'));assert protected
+  local=json.loads(call('backup.local',{'name':protected[0].name},csrf,binary=True));assert local['format']=='cloud-desk-v2' and local['key']
+  call('backup.local',{'name':'../key.php'},csrf,422)
+  assert all(p.read_text().startswith('<?php http_response_code(404); exit; ?>') and p.stat().st_mode & 0o077==0 for p in protected)
+  overview=call('overview')['data'];assert all('frozen' not in job for job in overview['publications'])
+  latest=max((job for job in overview['publications'] if job['target_id']==target2),key=lambda job:job['id'])
+  assert call('config.retry',{'id':latest['id']},csrf)['data'][0]['status']=='success'
+  print('PASS: stale edit conflict, invalid restore refusal and guarded pre-restore snapshots')
   print('PASS: revision-local deletion, required removal, persisted order, clone preservation and shared-template isolation')
   print('PASS: independent client plans, immutable schemas and published revisions, missing/new/unknown fields, address isolation, diff and rollback publication')
   call('password',{'old':'native-password-123','password':'new-native-password-456'},csrf)

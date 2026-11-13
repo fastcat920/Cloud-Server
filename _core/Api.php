@@ -91,6 +91,12 @@ final class Api
     private function safe(array $state): array
     {
         unset($state['admin'],$state['rates'],$state['sequences']);
+        $state['restore_backups'] = array_map('basename',glob($this->store->directory().'/backups/before-restore-*.php') ?: []);
+        rsort($state['restore_backups']);
+        foreach ($state['versions'] as &$v) $v['edit_token'] = Checks::token($v);
+        unset($v);
+        foreach ($state['publications'] as &$p) unset($p['frozen']);
+        unset($p);
         foreach ($state['accounts'] as &$a) {
             $a['has_credentials'] = !empty($a['credentials']);
             unset($a['credentials']);
@@ -203,8 +209,11 @@ final class Api
     }
     private function dispatch(string $action): mixed
     {
+        $exclusive = in_array($action,['target.save','target.delete','plan.save','account.save','account.delete','config.settings','restore','import.v1'],true) ? (new Releases($this->store,$this->security,$this->objects,$this->configs))->lock() : null;
+        try {
         switch ($action) {
             case 'overview':Plans::migrate($this->store);
+                (new Releases($this->store,$this->security,$this->objects,$this->configs))->recover();
                 return $this->safe($this->store->read());
             case 'password':$old = $this->text('old', 256);
                 $new = $this->text('password', 256);
@@ -536,11 +545,22 @@ final class Api
                 $payload = $this->configs->encode($r, $s['settings']);
                 return ['payload' => $payload,'bytes' => strlen($payload),'checksum' => hash('sha256', $payload)];
             case 'config.publish':return $this->publish();
-            case 'config.retry':$s = $this->store->read();
-                $p = Store::find($s, 'publications', $this->id());
-                $this->input['id'] = $p['version_id'];
-                $this->input['targets'] = [$p['target_id']];
-                return $this->publish();
+            case 'config.retry':return (new Releases($this->store,$this->security,$this->objects,$this->configs))->run(0,[],$this->id());
+            case 'config.check':$s = $this->store->read();
+                Configs::preflight(Store::find($s,'versions',$this->id()));
+                return ['valid'=>true];
+            case 'backup.local':
+                $name = $this->text('name',100);
+                if (!preg_match('/^before-restore-[0-9]+-[a-f0-9]{12}\.php$/',$name)) throw new ApiError('备份名称无效');
+                $path = $this->store->directory().'/backups/'.$name;
+                if (!is_file($path)) throw new ApiError('备份不存在',404);
+                $raw = file_get_contents($path);
+                if (!str_starts_with($raw,Store::GUARD)) throw new ApiError('备份格式错误');
+                header('Content-Type: application/json');
+                header('Content-Disposition: attachment; filename="before-restore.json"');
+                header('Cache-Control: no-store');
+                echo substr($raw,strlen(Store::GUARD));
+                exit;
             case 'backup':$s = $this->store->read();
                 unset($s['rates']);
                 $key = include $this->store->directory().'/key.php';
@@ -552,6 +572,7 @@ final class Api
             case 'import.v1':return $this->importV1();
             default:throw new ApiError('接口不存在', 404);
         }
+        } finally { if (is_resource($exclusive)) fclose($exclusive); }
     }
     private function provider(array $a, string $provider): void
     {
@@ -604,7 +625,7 @@ final class Api
         Plans::migrate($this->store);
         $id = (int)($this->input['id'] ?? 0);
         $content = $this->input['content'] ?? null;
-        if (!is_array($content)) {
+        if (!is_array($content) || ($content !== [] && array_is_list($content))) {
             throw new ApiError('客户端配置必须是 JSON 对象');
         }
         $mode = $this->text('mode', 30);
@@ -614,6 +635,9 @@ final class Api
         $summary = $this->text('summary', 500, false);
         return $this->store->transaction(function (array &$s) use ($id, $content, $mode, $summary) {
             $r = $id ? Store::find($s, 'versions', $id) : ['id' => Store::id($s, 'versions'),'created_at' => time(),'status' => 'draft'];
+            if ($id && (!is_string($this->input['expected_token'] ?? null) || !hash_equals(Checks::token($r),$this->input['expected_token']))) {
+                throw new ApiError('此修订已变化，请保留当前编辑并刷新后对比，避免覆盖其他修改',409);
+            }
             if ($r['status'] !== 'draft') {
                 $r['parent_id'] = $r['id'];
                 $r['id'] = Store::id($s, 'versions');
@@ -688,105 +712,8 @@ final class Api
     }
     private function publish(): array
     {
-        $id = $this->id();
-        $targetIds = array_values(array_unique(array_map('intval', (array)($this->input['targets'] ?? []))));
-        if (!$targetIds) {
-            throw new ApiError('请选择发布目标');
-        }
-        $snapshot = $this->store->read();
         Plans::migrate($this->store);
-        $snapshot = $this->store->read();
-        $version = Store::find($snapshot, 'versions', $id);
-        $plan = Store::find($snapshot, 'plans', $version['plan_id'] ?? 1);
-        if (array_diff($targetIds, $plan['targets'])) {
-            throw new ApiError('发布目标未绑定当前方案，请先在方案设置中选择独立路径');
-        }
-        foreach ($targetIds as $targetId) {
-            $target = Store::find($snapshot, 'targets', $targetId);
-            foreach ($snapshot['plans'] as $otherPlan) {
-                if ($otherPlan['id'] !== $plan['id']) {
-                    foreach ($otherPlan['targets'] as $otherId) {
-                        $other = Store::find($snapshot, 'targets', $otherId);
-                        if ([$target['region'],$target['bucket'],$target['key']] === [$other['region'],$other['bucket'],$other['key']] && Store::find($snapshot, 'accounts', $target['account_id'])['provider'] === Store::find($snapshot, 'accounts', $other['account_id'])['provider']) {
-                            throw new ApiError('发布路径与其他方案冲突，请先修改目标路径');
-                        }
-                    }
-                }
-            }
-        }
-        $payload = $this->configs->encode($version, $snapshot['settings']);
-        $checksum = hash('sha256', $payload);
-        $jobs = $this->store->transaction(function (array &$s) use ($id, $targetIds, $checksum, $version) {
-            $r = Store::find($s, 'versions', $id);
-            if ($r['content'] !== $version['content'] || $r['mode'] !== $version['mode']) {
-                throw new ApiError('配置已发生变化，请重新预览后发布');
-            }
-            foreach ($s['publications'] as $p) {
-                if ($p['version_id'] === $id && $p['status'] === 'publishing' && $p['started_at'] > time() - 300) {
-                    throw new ApiError('此版本正在发布，请稍后重试');
-                }
-            }
-            $r['status'] = 'publishing';
-            Store::put($s, 'versions', $r);
-            $jobs = [];
-            foreach ($targetIds as $targetId) {
-                $t = Store::find($s, 'targets', $targetId);
-                if (!$t['enabled']) {
-                    throw new ApiError('目标「'.$t['name'].'」已停用');
-                }
-                $p = ['id' => Store::id($s, 'publications'),'version_id' => $id,'target_id' => $targetId,'target_name' => $t['name'],'status' => 'publishing','checksum' => $checksum,'started_at' => time(),'error' => ''];
-                $s['publications'][] = $p;
-                $jobs[] = $p;
-            }
-            $s['publications'] = array_slice($s['publications'], -1000);
-            return $jobs;
-        });
-        foreach ($jobs as &$job) {
-            $target = Store::find($snapshot, 'targets', $job['target_id']);
-            $a = Store::find($snapshot, 'accounts', $target['account_id']);
-            try {
-                $key = $target['key'];
-                $dot = strrpos($key, '.');
-                $versionKey = $dot === false ? $key.'.v'.$version['version'] : substr($key, 0, $dot).'.v'.$version['version'].substr($key, $dot);
-                $this->objects->request($a, 'PUT', $target['region'], $target['bucket'], $versionKey, body:$payload, publicRead:$target['public_read']);
-                $this->objects->request($a, 'PUT', $target['region'], $target['bucket'], $key, body:$payload, publicRead:$target['public_read']);
-                $check = $this->objects->request($a, 'GET', $target['region'], $target['bucket'], $key);
-                if (!hash_equals($checksum, hash('sha256', $check['body']))) {
-                    throw new ApiError('发布后读取校验失败');
-                }
-                $job['status'] = 'success';
-            } catch (\Throwable $e) {
-                $job['status'] = 'failed';
-                $job['error'] = $e instanceof \RuntimeException ? $e->getMessage() : '发布失败';
-            }
-            $job['finished_at'] = time();
-            $this->store->transaction(function (array &$s) use ($job) {
-                Store::put($s, 'publications', $job);
-                Store::event($s, 'config.publish', $job['target_name'], $job['status']);
-            });
-        }
-        unset($job);
-        $this->store->transaction(function (array &$s) use ($id) {
-            $r = Store::find($s, 'versions', $id);
-            $latest = [];
-            foreach ($s['publications'] as $p) {
-                if ($p['version_id'] === $id) {
-                    $latest[$p['target_id']] = $p;
-                }
-            }
-            $all = $latest && !array_filter($latest, fn ($p) => $p['status'] !== 'success');
-            $r['status'] = $all ? 'published' : 'partial';
-            if ($all) {
-                foreach ($s['versions'] as &$old) {
-                    if ($old['id'] !== $id && ($old['plan_id'] ?? 1) === ($r['plan_id'] ?? 1) && $old['status'] === 'published') {
-                        $old['status'] = 'archived';
-                    }
-                }
-                unset($old);
-                $r['published_at'] = time();
-            }Store::put($s, 'versions', $r);
-        });
-        return $jobs;
+        return (new Releases($this->store,$this->security,$this->objects,$this->configs))->run($this->id(),array_values(array_unique(array_map('intval',(array)($this->input['targets'] ?? [])))));
     }
     private function restore(): bool
     {
@@ -795,6 +722,7 @@ final class Api
         if (($backup['format'] ?? '') !== 'cloud-desk-v2' || strlen(base64_decode($backup['key'] ?? '', true) ?: '') !== 32 || !is_array($backup['state'] ?? null)) {
             throw new ApiError('备份格式错误');
         }
+        Checks::state($backup['state']);
         // Re-encrypt using the installation key; never replace the key before a state commit.
         $source = new Security($backup['key']);
         $data = $backup['state'];
@@ -814,7 +742,27 @@ final class Api
                 $data['settings'][$field] = $this->security->encrypt($source->decrypt($data['settings'][$field]));
             }
         }
+        foreach ($data['publications'] as &$job) {
+            if (!empty($job['frozen'])) {
+                $frozen = json_decode($source->decrypt($job['frozen']),true,512,JSON_THROW_ON_ERROR);
+                foreach ($frozen['account']['credentials'] as &$credential) $credential = $this->security->encrypt($source->decrypt($credential));
+                unset($credential);
+                $job['frozen'] = $this->security->encrypt(json_encode($frozen,JSON_THROW_ON_ERROR));
+            }
+            if ($job['status'] === 'publishing') { $job['status']='failed'; $job['error']='备份中的未完成任务，请重试'; }
+        }
+        unset($job);
+        foreach ($data['versions'] as &$version) if (($version['status'] ?? '') === 'publishing') $version['status'] = 'partial';
+        unset($version);
         $this->store->transaction(function (array &$s) use ($data) {
+            $directory = $this->store->directory().'/backups';
+            if (!is_dir($directory) && !mkdir($directory,0700,true)) throw new ApiError('无法创建恢复前备份');
+            $path = $directory.'/before-restore-'.time().'-'.bin2hex(random_bytes(6)).'.php';
+            $key = include $this->store->directory().'/key.php';
+            $payload = Store::GUARD.json_encode(['format'=>'cloud-desk-v2','key'=>$key,'state'=>$s],JSON_THROW_ON_ERROR | JSON_HEX_TAG);
+            if (file_put_contents($path,$payload,LOCK_EX) !== strlen($payload)) throw new ApiError('恢复前备份失败，已停止恢复');
+            chmod($path,0600);
+
             if (!isset($data['plans'],$data['templates'])) {
                 unset($s['plans'],$s['templates']);
             }
