@@ -209,7 +209,7 @@ final class Api
     }
     private function dispatch(string $action): mixed
     {
-        $exclusive = in_array($action,['target.save','target.delete','plan.save','account.save','account.delete','config.settings','restore','import.v1'],true) ? (new Releases($this->store,$this->security,$this->objects,$this->configs))->lock() : null;
+        $exclusive = in_array($action,['target.save','target.delete','plan.save','account.save','account.delete','config.settings','restore','import.v1','template.delete'],true) ? (new Releases($this->store,$this->security,$this->objects,$this->configs))->lock() : null;
         try {
         switch ($action) {
             case 'overview':Plans::migrate($this->store);
@@ -464,6 +464,20 @@ final class Api
                     }
                 }
                 return true;
+            case 'template.delete':
+                $id = $this->id();
+                return $this->store->transaction(function (array &$s) use ($id) {
+                    $template = Store::find($s,'templates',$id);
+                    if (!empty($template['builtin'])) throw new ApiError('系统内置模板不能删除',409);
+                    $this->confirmation($template['name']);
+                    $references=[];
+                    foreach ($s['plans'] ?? [] as $plan) if ($plan['template_id'] === $id) $references[]='方案「'.$plan['name'].'」';
+                    foreach ($s['versions'] as $version) if (($version['template_id'] ?? null) === $id) $references[]='修订 r'.($version['revision'] ?? $version['version']).'（ID '.$version['id'].'）';
+                    if ($references) throw new ApiError('模板仍被使用：'.implode('、',array_slice($references,0,8)).(count($references)>8?'等共 '.count($references).' 处':'').'。请先解除引用；历史修订引用会保留。',409);
+                    $s['templates']=array_values(array_filter($s['templates'],fn ($row)=>$row['id']!==$id));
+                    Store::event($s,'template.delete',$template['name']);
+                    return true;
+                });
             case 'template.save':
                 $schema = $this->input['schema'] ?? null;
                 if (!is_array($schema)) {

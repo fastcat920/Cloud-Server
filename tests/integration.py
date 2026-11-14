@@ -130,6 +130,15 @@ with tempfile.TemporaryDirectory(prefix='cloud-native-http-') as directory:
   overview=call('overview')['data'];assert all('frozen' not in job for job in overview['publications'])
   latest=max((job for job in overview['publications'] if job['target_id']==target2),key=lambda job:job['id'])
   assert call('config.retry',{'id':latest['id']},csrf)['data'][0]['status']=='success'
+  unused=call('template.save',{'name':'Unused delete test','schema':{'type':'object','properties':{}}},csrf)['data']
+  call('template.delete',{'id':unused,'confirmation':'wrong'},csrf,422)
+  call('template.delete',{'id':unused,'confirmation':'Unused delete test'},csrf)
+  assert all(t['id']!=unused for t in call('overview')['data']['templates'])
+  builtin=next(t for t in call('overview')['data']['templates'] if t.get('builtin'))
+  call('template.delete',{'id':builtin['id'],'confirmation':builtin['name']},csrf,409)
+  call('template.delete',{'id':template,'confirmation':'Client 2 structure'},csrf,409)
+  assert any(t['id']==template for t in call('overview')['data']['templates'])
+  print('PASS: unused template deletion, confirmation, built-in and reference protection')
   print('PASS: stale edit conflict, invalid restore refusal and guarded pre-restore snapshots')
   print('PASS: revision-local deletion, required removal, persisted order, clone preservation and shared-template isolation')
   print('PASS: independent client plans, immutable schemas and published revisions, missing/new/unknown fields, address isolation, diff and rollback publication')

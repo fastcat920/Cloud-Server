@@ -723,11 +723,12 @@ function templatesView() {
   return panel(
     "不可变结构模板",
     table(
-      ["模板", "字段数量", "操作"],
+      ["模板", "字段数量", "使用情况", "操作"],
       (state.templates || []).map((t) => [
         e(t.name),
         Object.keys(t.schema.properties || {}).length,
-        button("查看 / 派生新模板", "template.edit", { id: t.id }, "text"),
+        `${t.builtin ? badge("系统内置") + " · " : ""}${state.plans.filter((p) => p.template_id === t.id).length} 个方案 · ${state.versions.filter((v) => v.template_id === t.id).length} 个修订`,
+        `<div class="toolbar">${button("查看 / 派生新模板", "template.edit", { id: t.id }, "text")}${t.builtin ? "" : button("删除", "template.delete", { id: t.id }, "text")}</div>`,
       ]),
     ),
     button("新增结构模板", "template.edit", {}, "primary", "plus"),
@@ -1809,6 +1810,26 @@ Object.assign(actions, {
             ? await api("config.clone", { id: source.id, plan_id: planId })
             : 0;
         await refresh();
+      },
+    );
+  },
+  "template.delete": (d) => {
+    const t = state.templates.find((t) => t.id === Number(d.id));
+    const plans = state.plans.filter((p) => p.template_id === t.id),
+      versions = state.versions.filter((v) => v.template_id === t.id);
+    if (plans.length || versions.length) {
+      throw new Error(
+        `模板被 ${plans.length} 个方案、${versions.length} 个修订引用。${plans.length ? "请先在方案设置更换默认模板。" : ""}${versions.length ? "修订仍保留引用，暂不能删除该模板。" : ""}`,
+      );
+    }
+    confirm(
+      "删除结构模板",
+      "删除未使用的模板，保存过的方案及修订不受影响。",
+      t.name,
+      async (confirmation) => {
+        await api("template.delete", { id: t.id, confirmation });
+        await refresh();
+        toast("模板已删除");
       },
     );
   },
