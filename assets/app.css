@@ -1867,14 +1867,7 @@ dialog::backdrop {
 }
 
 .gtm-editor-section + .gtm-editor-section {
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line);
-}
-.gtm-editor-section h4 {
-  margin: 0 0 12px;
-  font-size: 13px;
-  color: var(--ink);
+  margin-top: 12px;
 }
 .gtm-editor-actions .toolbar {
   gap: 10px;

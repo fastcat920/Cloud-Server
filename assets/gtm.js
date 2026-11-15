@@ -757,7 +757,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
             ? `<fieldset class="gtm-fieldset"><legend>${e(protocol?.toUpperCase() || "")} 协议参数</legend><div class="gtm-form-grid">${controls(Object.fromEntries(protocolFields.map((key) => [key, extensionSchema[key]])), editor.values.ExtendInfo || {}, ["ExtendInfo"])}</div></fieldset>`
             : "");
         return contents
-          ? `<section class="gtm-editor-section" aria-label="${e(label)}"><h4>${e(label)}</h4><div class="gtm-form-grid">${contents}</div></section>`
+          ? `<section class="gtm-editor-section" aria-label="${e(label)}"><div class="gtm-form-grid">${contents}</div></section>`
           : "";
       })
       .join("");
@@ -886,7 +886,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
               )
             : "")
         : "";
-    box.innerHTML = `<form id="gtm-editor-form"><header class="gtm-inspector-head"><div><small>${e(kinds[editor.spec.kind])}</small><h3 id="gtm-editor-title">${e(gtmName(editor.resource))}</h3></div>${button("×", "gtm.inspector.close", {}, "icon-only")}</header><div class="gtm-inspector-body"><div class="dialog-error" role="alert"></div>${editorBody()}${extra ? `<section class="gtm-editor-section gtm-editor-actions" aria-label="资源操作"><h4>资源操作</h4><div class="toolbar">${extra}</div></section>` : ""}</div><footer class="gtm-inspector-foot">${button("关闭", "gtm.inspector.close", {}, "text")}<button type="submit" class="button primary">预览并提交</button></footer></form>`;
+    box.innerHTML = `<form id="gtm-editor-form"><header class="gtm-inspector-head"><div><small>${e(kinds[editor.spec.kind])}</small><h3 id="gtm-editor-title">${e(gtmName(editor.resource))}</h3></div>${button("×", "gtm.inspector.close", {}, "icon-only")}</header><div class="gtm-inspector-body"><div class="dialog-error" role="alert"></div>${editorBody()}${extra ? `<section class="gtm-editor-section gtm-editor-actions" aria-label="资源操作"><div class="toolbar">${extra}</div></section>` : ""}</div><footer class="gtm-inspector-foot">${button("关闭", "gtm.inspector.close", {}, "text")}<button type="submit" class="button primary">预览并提交</button></footer></form>`;
     const onSubmit = async (_, form) => {
       editor.values = collect(form);
       const parameters = payload();
