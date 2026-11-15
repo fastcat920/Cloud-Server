@@ -25,9 +25,16 @@ final class Gtm
         foreach (self::catalog()[$operation]['json'] ?? [] as $field) {
             if (isset($params[$field]) && is_array($params[$field])) $params[$field]=json_encode($params[$field],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
         }
-        try {
-        return $this->cloud->rpc($account,$operation,['AcceptLanguage'=>'zh-CN']+$params,service:'alidns',method:isset(self::catalog()[$operation])?'POST':'GET');
-        } catch (\RuntimeException $error) { throw new \RuntimeException('GTM '.$operation.'：'.$error->getMessage(),0,$error); }
+        $read=!isset(self::catalog()[$operation]);
+        for($attempt=0;$attempt<($read?2:1);$attempt++) {
+            try {
+                return $this->cloud->rpc($account,$operation,['AcceptLanguage'=>'zh-CN']+$params,service:'alidns',method:$read?'GET':'POST',timeout:$read?15:60);
+            } catch (\RuntimeException $error) {
+                if ($read && $attempt===0 && (str_contains($error->getMessage(),'28') || preg_match('/HTTP 50[234]/',$error->getMessage()))) continue;
+                throw new \RuntimeException('GTM '.$operation.'：'.$error->getMessage(),0,$error);
+            }
+        }
+        throw new \RuntimeException('GTM 读取失败');
     }
     public function listing(array $account,string $kind,int $page=1,array $filters=[]): array
     {
@@ -78,14 +85,30 @@ final class Gtm
         if ($kind==='monitors') return $this->all($account,'addresses',['MonitorTemplateId'=>$id]);
         return [];
     }
-    public function options(array $account): array
+    public function options(array $account, ?string $operation = null): array
     {
         $result=['errors'=>[]];
+        $needed=array_fill_keys([...array_keys(self::KINDS),'nodes','lines'],true);
+        if ($operation !== null) {
+            $spec=self::catalog()[$operation] ?? throw new ApiError('GTM 操作无效');
+            $needed=[];
+            $walk=function(array $fields,bool $nested=false) use (&$walk,&$needed,$spec): void {
+                foreach ($fields as $name=>$field) {
+                    if (($nested || $spec['create']) && isset(['AddressPoolId'=>'pools','AddressId'=>'addresses','TemplateId'=>'monitors','InstanceId'=>'instances'][$name])) $needed[['AddressPoolId'=>'pools','AddressId'=>'addresses','TemplateId'=>'monitors','InstanceId'=>'instances'][$name]]=true;
+                    if ($name==='RequestSource') $needed['lines']=true;
+                    if ($name==='IspCityNodes') $needed['nodes']=true;
+                    if (isset($field['items']['properties'])) $walk($field['items']['properties'],true);
+                }
+            };
+            $walk($spec['fields']);
+        }
         foreach (array_keys(self::KINDS) as $kind) {
+            if (!isset($needed[$kind])) continue;
             try { $result[$kind]=$this->all($account,$kind); }
             catch (\RuntimeException $error) { $result[$kind]=[];$result['errors'][$kind]=$error->getMessage(); }
         }
         foreach (['nodes'=>'ListCloudGtmMonitorNodes','lines'=>'DescribeCloudGtmSystemLines'] as $key=>$operation) {
+            if (!isset($needed[$key])) continue;
             try { $result[$key]=$this->call($account,$operation); }
             catch (\RuntimeException $error) { $result[$key]=[];$result['errors'][$key]=$error->getMessage(); }
         }
@@ -161,7 +184,11 @@ final class Gtm
             foreach ($params[$field] as $item) {
                 $id=$item[$idField] ?? '';
                 if ($id==='' || isset($seen[$id])) throw new ApiError('关联资源缺少 ID 或重复');
-                $seen[$id]=true;$child=$this->detail($account,$kind,$id)['resource'];
+                $seen[$id]=true;$child=null;
+                $container=$before[$field] ?? [];
+                $members=$container[$field==='AddressPools'?'AddressPool':'Address'] ?? [];
+                foreach ($members as $member) if (($member[$idField] ?? null)===$id) {$child=$member;break;}
+                $child ??= $this->detail($account,$kind,$id)['resource'];
                 $type=$child[$kind==='pools'?'AddressPoolType':'Type'] ?? '';
                 if ($field==='AddressPools') {
                     $allowed=match($before['ScheduleRrType'] ?? '') {'A'=>['IPv4','domain'],'AAAA'=>['IPv6','domain'],'CNAME'=>['domain'],default=>[]};
@@ -174,11 +201,11 @@ final class Gtm
                 }
             }
         }
-        $ports=[];
+        $ports=[];$templates=[];
         $addressType=$params['Type'] ?? $before['Type'] ?? null;
         foreach ($params['HealthTasks'] ?? [] as $task) {
             if (empty($task['TemplateId'])) throw new ApiError('请选择探测模板');
-            $template=$this->detail($account,'monitors',$task['TemplateId'])['resource'];
+            $template=$templates[$task['TemplateId']] ??= $this->detail($account,'monitors',$task['TemplateId'])['resource'];
             if (in_array($addressType,['IPv4','IPv6'],true) && ($template['IpVersion'] ?? null)!==$addressType) throw new ApiError('探测模板的 IP 版本与服务地址不匹配');
             if (($template['Protocol'] ?? '')==='ping') { if (isset($task['Port'])) throw new ApiError('Ping 探测不填写端口'); }
             elseif (!isset($task['Port'])) throw new ApiError('TCP/HTTP/HTTPS 探测必须填写端口');

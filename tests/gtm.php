@@ -43,6 +43,14 @@ try {
  $tampered=$p['ticket'];$tampered[5]=$tampered[5]==='a'?'b':'a';try{$gtm->apply($account,$tampered);throw new LogicException('Tampered ticket accepted');}catch(RuntimeException){}
  $detail=$gtm->detail($account,'monitors','mtp-1');$p=$gtm->preview($account,'UpdateCloudGtmMonitorTemplate',['TemplateId'=>'mtp-1','Interval'=>30,'IspCityNodes'=>[['CityCode'=>'503','IspCode'=>'465']],'ExtendInfo'=>'{"host":"api.unit.test","path":"/ready","code":500,"sni":true,"followRedirect":false}'],$detail['token']);verifyGtm($gtm->apply($account,$p['ticket'])['verification']==='confirmed','Monitor forms and nested selectors');
  verifyGtm(Gtm::fingerprint(['Name'=>'a','HealthStatus'=>'ok','UpdateTimestamp'=>1])===Gtm::fingerprint(['Name'=>'a','HealthStatus'=>'exceptional','UpdateTimestamp'=>2]),'Health changes do not create edit conflicts');
+ $minimal=$gtm->options($account,'UpdateCloudGtmInstanceConfigBasic');verifyGtm(array_keys($minimal)===['errors'],'Basic edit must not query unrelated resource catalogs');
+ $originalTransport=Http::$transport;$attempts=0;
+ Http::$transport=function($method,$url,$headers,$body)use($originalTransport,&$attempts){parse_str(parse_url($url,PHP_URL_QUERY)??'',$q);if(($q['Action']??'')==='DescribeCloudGtmAddress' && ++$attempts===1)throw new RuntimeException('network timeout (28)');return $originalTransport($method,$url,$headers,$body);};
+ $gtm->detail($account,'addresses','addr-1');verifyGtm($attempts===2,'Transient read timeout must retry once');Http::$transport=$originalTransport;
+ $detail=$gtm->detail($account,'addresses','addr-1');$preview=$gtm->preview($account,'UpdateCloudGtmAddressRemark',['AddressId'=>'addr-1','Remark'=>'timeout test'],$detail['token']);$writes=0;
+ Http::$transport=function($method,$url,$headers,$body)use($originalTransport,&$writes){if($method==='POST'){++$writes;throw new RuntimeException('network timeout (28)');}return $originalTransport($method,$url,$headers,$body);};
+ try{$gtm->apply($account,$preview['ticket']);throw new LogicException('Timeout not reported');}catch(RuntimeException){}
+ verifyGtm($writes===1,'Never auto-retry mutation');Http::$transport=$originalTransport;
  echo "PASS: GTM topology, selectors, JSON RPC bindings, create/update/delete, references, stale edits, preview integrity, idempotency and verification\n";
 } finally {
  Http::$transport=null;

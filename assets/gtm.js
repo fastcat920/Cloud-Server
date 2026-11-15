@@ -187,10 +187,14 @@ export function createGtm({ api, ctx, render, queryResources }) {
     c.gtmCatalog ??= await api("gtm.catalog", { account_id: c.account });
     return c.gtmCatalog;
   }
-  async function options() {
+  async function options(operation) {
     const c = ctx();
-    c.gtmOptions ??= await api("gtm.options", { account_id: c.account });
-    return c.gtmOptions;
+    c.gtmOptions ??= {};
+    c.gtmOptions[operation] ??= await api("gtm.options", {
+      account_id: c.account,
+      operation,
+    });
+    return c.gtmOptions[operation];
   }
   function choices(key, spec, value) {
     const o = editor.options;
@@ -628,7 +632,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
           resource: id,
         });
     const resource = normalizeGtm(detail.resource),
-      opts = await options();
+      opts = await options(operation);
     if (requested !== session || selectedAccount !== ctx().account) return;
     editor = {
       session: requested,

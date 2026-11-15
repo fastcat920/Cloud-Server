@@ -7,7 +7,7 @@ namespace CloudDesk;
 final class Http
 {
     public static $transport = null;
-    public static function request(string $method, string $url, array $headers = [], string $body = '', int $limit = 33554432): array
+    public static function request(string $method, string $url, array $headers = [], string $body = '', int $limit = 33554432, int $timeout = 60): array
     {
         if (self::$transport) {
             return (self::$transport)($method, $url, $headers, $body);
@@ -19,7 +19,7 @@ final class Http
         $bytes = '';
         $size = 0;
         $tooLarge = false;
-        curl_setopt_array($handle, [CURLOPT_CUSTOMREQUEST => $method,CURLOPT_HTTPHEADER => array_map(fn ($k) => $k.': '.$headers[$k], array_keys($headers)),CURLOPT_CONNECTTIMEOUT => 8,CURLOPT_TIMEOUT => 60,CURLOPT_FOLLOWLOCATION => false,CURLOPT_PATH_AS_IS => true,CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,CURLOPT_SSL_VERIFYPEER => true,CURLOPT_SSL_VERIFYHOST => 2,CURLOPT_WRITEFUNCTION => function ($ch, $chunk) use (&$bytes, &$size, &$tooLarge, $limit) {
+        curl_setopt_array($handle, [CURLOPT_CUSTOMREQUEST => $method,CURLOPT_HTTPHEADER => array_map(fn ($k) => $k.': '.$headers[$k], array_keys($headers)),CURLOPT_CONNECTTIMEOUT => 8,CURLOPT_TIMEOUT => $timeout,CURLOPT_FOLLOWLOCATION => false,CURLOPT_PATH_AS_IS => true,CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,CURLOPT_SSL_VERIFYPEER => true,CURLOPT_SSL_VERIFYHOST => 2,CURLOPT_WRITEFUNCTION => function ($ch, $chunk) use (&$bytes, &$size, &$tooLarge, $limit) {
             $size += strlen($chunk);
             if ($size > $limit) {
                 $tooLarge = true;
@@ -38,18 +38,19 @@ final class Http
         if ($tooLarge) {
             throw new \RuntimeException('文件超过当前 32 MB 下载上限，请使用云厂商工具下载');
         }
+        if ($error === 28) throw new \RuntimeException('云服务请求超时（28）。若正在提交变更，请先刷新核对云端状态再重试');
         if ($ok === false || $error) {
             throw new \RuntimeException('云服务连接失败，请检查网络与地域（'.$error.'）');
         }
         return ['status' => $status,'body' => $bytes];
     }
-    public static function json(string $method, string $url, array $headers = [], array|string|null $body = null): array
+    public static function json(string $method, string $url, array $headers = [], array|string|null $body = null, int $timeout = 60): array
     {
         if (is_array($body)) {
             $headers['Content-Type'] = 'application/json';
             $body = json_encode($body, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
         }
-        $response = self::request($method, $url, $headers, $body ?? '');
+        $response = self::request($method, $url, $headers, $body ?? '', timeout:$timeout);
         $data = json_decode($response['body'], true);
         if (!is_array($data)) {
             throw new \RuntimeException('云服务返回格式错误（HTTP '.$response['status'].'）');
@@ -72,7 +73,7 @@ final class Cloud
         }
         return array_map(fn ($v) => $this->security->decrypt($v), $account['credentials']);
     }
-    public function rpc(array $account, string $action, array $params = [], string $region = '', string $service = 'ecs', string $method = 'GET'): array
+    public function rpc(array $account, string $action, array $params = [], string $region = '', string $service = 'ecs', string $method = 'GET', int $timeout = 60): array
     {
         $params = array_diff_key($params, array_fill_keys(['Action','Format','Version','AccessKeyId','PublicKey','SecurityToken','Signature','SignatureMethod','SignatureVersion','SignatureNonce','Timestamp'], true));
         $keys = $this->credentials($account);
@@ -105,7 +106,7 @@ final class Cloud
             $canonical = http_build_query($flat, '', '&', PHP_QUERY_RFC3986);
             $flat['Signature'] = base64_encode(hash_hmac('sha1', $method.'&%2F&'.rawurlencode($canonical), $secret.'&', true));
             $encoded = http_build_query($flat, '', '&', PHP_QUERY_RFC3986);
-            $data = $method === 'POST' ? Http::json('POST', 'https://'.$host.'/', ['Content-Type'=>'application/x-www-form-urlencoded'], $encoded) : Http::json('GET', 'https://'.$host.'/?'.$encoded);
+            $data = $method === 'POST' ? Http::json('POST', 'https://'.$host.'/', ['Content-Type'=>'application/x-www-form-urlencoded'], $encoded, $timeout) : Http::json('GET', 'https://'.$host.'/?'.$encoded, timeout:$timeout);
             if (isset($data['Code']) && !in_array((string)$data['Code'], ['200','Success'], true)) {
                 throw new \RuntimeException($data['Code'].'：'.($data['Message'] ?? '请求失败'));
             }

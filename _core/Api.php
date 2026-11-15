@@ -607,7 +607,7 @@ final class Api
         $account=$this->account();$this->provider($account,'aliyun');
         $gtm=new Gtm($this->cloud,$this->store,$this->security);
         if ($action==='gtm.catalog') return Gtm::catalog();
-        if ($action==='gtm.options') return $gtm->options($account);
+        if ($action==='gtm.options') return $gtm->options($account,$this->text('operation',100,false) ?: null);
         if ($action==='gtm.history') return array_values(array_reverse(array_filter($this->store->read()['gtm_changes'] ?? [],fn ($row)=>$row['account_id']===$account['id'])));
         if ($action==='gtm.action') return $gtm->apply($account,$this->text('ticket',1000000));
         if ($action==='gtm.preview') {
