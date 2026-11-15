@@ -96,3 +96,19 @@ console.log('PASS: GTM changed-only previews, association identity/order, extens
 assert.deepEqual(gtmChanges({IspCityNodes:[{CityCode:'1',IspCode:'a'},{CityCode:'1',IspCode:'b'}]}, {IspCityNodes:[{CityCode:'1',IspCode:'b'},{CityCode:'2',IspCode:'a'}]}).map(v=>v.path),['IspCityNodes[2/a]（新增）','IspCityNodes[1/a]（移除）']);
 assert.deepEqual(gtmChanges({HealthTasks:[{TemplateId:'t',Port:443},{TemplateId:'t',Port:8443}]}, {HealthTasks:[{TemplateId:'t',Port:443},{TemplateId:'t',Port:9443}]}).map(v=>v.path),['HealthTasks[t:9443]（新增）','HealthTasks[t:8443]（移除）']);
 assert.deepEqual(gtmChanges({HealthTasks:[{TemplateId:'t',Port:443}]}, {HealthTasks:[{TemplateId:'t'}]}, {HealthTasks:{type:'array',items:{type:'object',properties:{TemplateId:{type:'string'},Port:{type:'integer'}}}}}).map(v=>v.path),['HealthTasks[t].Port']);
+
+const { gtmStateBadge } = await import('../assets/gtm.js');
+for (const [row, label] of [
+  [{EnableStatus:'enable',HealthStatus:'ok',AvailableStatus:'available'},'可用'],
+  [{EnableStatus:'enable',HealthStatus:'ok_alert',AvailableStatus:'available'},'异常'],
+  [{EnableStatus:'enable',HealthStatus:'exceptional',AvailableStatus:'available'},'异常'],
+  [{EnableStatus:'enable',HealthStatus:'exceptional',AvailableStatus:'unavailable'},'不可用'],
+  [{EnableStatus:'disable',HealthStatus:'ok',AvailableStatus:'available'},'不可用'],
+  [{HealthStatus:'ok_no_monitor'},'未探测'],
+  [{},'未知'],
+]) {
+  const html = gtmStateBadge(row);
+  assert.equal((html.match(/<span/g) || []).length, 1, 'Exactly one state badge');
+  assert.equal(html.replace(/<[^>]*>/g,''), label);
+}
+console.log('PASS: one combined badge for healthy, degraded, unavailable, disabled and unknown resources');

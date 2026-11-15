@@ -66,8 +66,20 @@ export function gtmName(row = {}) {
     "未命名"
   );
 }
-const stateBadge = (r) =>
-  `${badge(enums[r.EnableStatus] || r.Protocol || "—", r.EnableStatus === "enable" ? "good" : "")}${r.HealthStatus ? badge({ ok: "健康", ok_alert: "异常", ok_no_monitor: "未探测", exceptional: "异常" }[r.HealthStatus] || r.HealthStatus, r.HealthStatus === "exceptional" ? "bad" : "") : ""}${r.AvailableStatus ? badge(enums[r.AvailableStatus] || r.AvailableStatus, r.AvailableStatus === "unavailable" ? "bad" : "good") : ""}`;
+export function gtmStateBadge(row) {
+  if (row.EnableStatus === "disable" || row.AvailableStatus === "unavailable")
+    return badge("不可用", "bad");
+  if (["exceptional", "ok_alert"].includes(row.HealthStatus))
+    return badge("异常", row.HealthStatus === "exceptional" ? "bad" : "warn");
+  if (row.AvailableStatus === "available" || row.HealthStatus === "ok")
+    return badge("可用", "good");
+  return badge(
+    row.HealthStatus === "ok_no_monitor"
+      ? "未探测"
+      : row.Protocol?.toUpperCase() || "未知",
+  );
+}
+const stateBadge = gtmStateBadge;
 const openButton = (kind, row, label = "配置") =>
   button(label, "gtm.open", { kind, id: row[ids[kind]] }, "text");
 export function normalizeGtm(resource) {
