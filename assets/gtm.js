@@ -354,7 +354,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
             ...(protocol === "https" ? ["sni"] : []),
             "followRedirect",
           ];
-    return `${editor.references.length ? `<div class="notice warn">此资源被 ${editor.references.length} 项资源引用，修改会作用于所有引用。请在提交前核对关联。</div>` : ""}${errors.length ? `<details class="notice warn"><summary>部分辅助资源读取失败</summary>${errors.map(e).join("<br>")}</details>` : ""}<div class="gtm-form-grid">${controls(editor.spec.fields, editor.values)}</div>${Object.hasOwn(editor.spec.fields, "ExtendInfo") && protocol !== "tcp" ? `<fieldset class="gtm-fieldset"><legend>${e(protocol?.toUpperCase() || "")} 协议参数</legend><div class="gtm-form-grid">${controls(Object.fromEntries(protocolFields.map((key) => [key, extensionSchema[key]])), editor.values.ExtendInfo || {}, ["ExtendInfo"])}</div></fieldset>` : ""}`;
+    return `${editor.bindingHint ? `<div class="notice">${e(editor.bindingHint)}</div>` : ""}${editor.references.length ? `<div class="notice warn">此资源被 ${editor.references.length} 项资源引用，修改会作用于所有引用。请在提交前核对关联。</div>` : ""}${errors.length ? `<details class="notice warn"><summary>部分辅助资源读取失败</summary>${errors.map(e).join("<br>")}</details>` : ""}<div class="gtm-form-grid">${controls(editor.spec.fields, editor.values)}</div>${Object.hasOwn(editor.spec.fields, "ExtendInfo") && protocol !== "tcp" ? `<fieldset class="gtm-fieldset"><legend>${e(protocol?.toUpperCase() || "")} 协议参数</legend><div class="gtm-form-grid">${controls(Object.fromEntries(protocolFields.map((key) => [key, extensionSchema[key]])), editor.values.ExtendInfo || {}, ["ExtendInfo"])}</div></fieldset>` : ""}`;
   }
   function collect(form) {
     const values = structuredClone(editor.values);
@@ -368,6 +368,11 @@ export function createGtm({ api, ctx, render, queryResources }) {
         node.dataset.type === "boolean" ? input.checked : input.value;
       if (value === "" && node.dataset.required !== "1") {
         if (Array.isArray(parent)) parent[Number(key)] = "";
+        else if (
+          node.dataset.type === "string" &&
+          (Object.hasOwn(parent, key) || key === "Remark")
+        )
+          parent[key] = "";
         else delete parent[key];
         continue;
       }
@@ -394,81 +399,175 @@ export function createGtm({ api, ctx, render, queryResources }) {
   }
   function drawEditor() {
     const currentSession = editor.session;
-    modal(
-      `${editor.spec.label} · ${kinds[editor.spec.kind]}`,
-      "修改直接提交到阿里云。先填写参数，再预览差异并确认。",
-      editorBody(),
-      async (_, form) => {
-        editor.values = collect(form);
-        const preview = await api("gtm.preview", {
-          account_id: editor.account,
-          operation: editor.operation,
-          parameters: payload(),
-          expected_token: editor.token,
-        });
-        const savedEditor = editor;
-        setTimeout(() => {
-          if (editor?.session !== currentSession) return;
-          const changes = Object.entries(preview.parameters).filter(
-            ([key]) =>
-              ![
-                "InstanceId",
-                "ConfigId",
-                "AddressId",
-                "AddressPoolId",
-                "TemplateId",
-              ].includes(key),
-          );
-          modal(
-            "确认 GTM 变更",
-            `将对「${gtmName(savedEditor.resource)}」执行「${preview.label}」。${preview.references.length ? `影响 ${preview.references.length} 项引用资源。` : ""}DNS 缓存可能使解析结果延后更新。`,
-            (preview.references.length
-              ? table(
-                  ["受影响的引用资源", "ID"],
-                  preview.references.map((row) => [
-                    e(gtmName(row)),
-                    e(
-                      row.ConfigId ||
-                        row.AddressPoolId ||
-                        row.AddressId ||
-                        row.TemplateId,
-                    ),
-                  ]),
-                )
-              : "") +
-              table(
-                ["参数", "原值", "提交值"],
-                changes.map(([key, value]) => [
-                  e(savedEditor.spec.fields[key]?.label || key),
-                  formatValue(normalizeGtm(preview.before)[key]),
-                  formatValue(key === "ExtendInfo" ? JSON.parse(value) : value),
-                ]),
-              ) +
-              `<div class="toolbar">${button("返回编辑", "gtm.back", {}, "text")}</div>`,
-            async () => {
-              const result = await api("gtm.action", {
-                account_id: savedEditor.account,
-                ticket: preview.ticket,
-              });
-              const c = ctx();
-              delete c.gtmOptions;
-              toast(
-                result.verification === "confirmed"
-                  ? "阿里云已确认配置更新"
-                  : "请求已提交，请刷新查询云端状态",
-              );
-              c.gtmDetail = null;
-              await queryResources();
-              if (result.resource_id && !savedEditor.spec.delete)
-                await open(savedEditor.spec.kind, result.resource_id);
-            },
-            "确认提交",
-          );
-        }, 0);
-      },
-      "预览变更",
+    const canvas = document.querySelector(".gtm-canvas");
+    const scroll = {
+      left: canvas?.scrollLeft || 0,
+      top: canvas?.scrollTop || 0,
+    };
+    render();
+    const restored = document.querySelector(".gtm-canvas");
+    if (restored) {
+      restored.scrollLeft = scroll.left;
+      restored.scrollTop = scroll.top;
+    }
+    const box = document.querySelector("#gtm-inspector");
+    if (!box) return;
+    const operations = Object.entries(ctx().gtmCatalog || {}).filter(
+      ([, op]) => op.kind === editor.spec.kind && !op.create,
     );
-    const form = document.querySelector("#modal-form");
+    box.innerHTML = `<form id="gtm-editor-form"><header class="gtm-inspector-head"><div><small>${e(kinds[editor.spec.kind])}</small><h3>${e(gtmName(editor.resource))}</h3></div>${button("×", "gtm.inspector.close", {}, "icon-only")}</header><div class="gtm-inspector-body">${
+      !editor.spec.create
+        ? select(
+            "operation",
+            "操作",
+            operations.map(([value, op]) => ({
+              value,
+              label:
+                op.delete && op.kind !== "list" ? "全局" + op.label : op.label,
+            })),
+            editor.operation,
+          )
+        : `<h4>${e(editor.spec.label)}</h4>`
+    }<div class="dialog-error" role="alert"></div>${editorBody()}</div><footer class="gtm-inspector-foot">${button("关闭", "gtm.inspector.close", {}, "text")}<button type="submit" class="button primary">预览并提交</button></footer></form>`;
+    const onSubmit = async (_, form) => {
+      editor.values = collect(form);
+      const preview = await api("gtm.preview", {
+        account_id: editor.account,
+        operation: editor.operation,
+        parameters: payload(),
+        expected_token: editor.token,
+      });
+      const savedEditor = editor;
+      setTimeout(() => {
+        if (editor?.session !== currentSession) return;
+        const changes = Object.entries(preview.parameters).filter(
+          ([key]) =>
+            ![
+              "InstanceId",
+              "ConfigId",
+              "AddressId",
+              "AddressPoolId",
+              "TemplateId",
+            ].includes(key),
+        );
+        modal(
+          "确认 GTM 变更",
+          `将对「${gtmName(savedEditor.resource)}」执行「${preview.label}」。${preview.references.length ? `影响 ${preview.references.length} 项引用资源。` : ""}DNS 缓存可能使解析结果延后更新。`,
+          (preview.references.length
+            ? table(
+                ["受影响的引用资源", "ID"],
+                preview.references.map((row) => [
+                  e(gtmName(row)),
+                  e(
+                    row.ConfigId ||
+                      row.AddressPoolId ||
+                      row.AddressId ||
+                      row.TemplateId,
+                  ),
+                ]),
+              )
+            : "") +
+            table(
+              ["参数", "原值", "提交值"],
+              changes.map(([key, value]) => [
+                e(savedEditor.spec.fields[key]?.label || key),
+                formatValue(normalizeGtm(preview.before)[key]),
+                formatValue(key === "ExtendInfo" ? JSON.parse(value) : value),
+              ]),
+            ) +
+            `<div class="toolbar">${button("返回编辑", "gtm.back", {}, "text")}</div>`,
+          async () => {
+            const result = await api("gtm.action", {
+              account_id: savedEditor.account,
+              ticket: preview.ticket,
+            });
+            const c = ctx();
+            delete c.gtmOptions;
+            toast(
+              result.verification === "confirmed"
+                ? "阿里云已确认配置更新"
+                : "请求已提交，请刷新查询云端状态",
+            );
+            const root = savedEditor.root;
+            editor = null;
+            c.gtmDetail = null;
+            await queryResources();
+            if (
+              root &&
+              !(
+                savedEditor.spec.delete &&
+                root.kind === savedEditor.spec.kind &&
+                root.id === result.resource_id
+              )
+            )
+              await open(root.kind, root.id);
+            else if (result.resource_id && !savedEditor.spec.delete)
+              await open(savedEditor.spec.kind, result.resource_id);
+            if (savedEditor.attach && result.resource_id) {
+              const parent = savedEditor.attach;
+              await edit(
+                parent.kind === "list"
+                  ? "ReplaceCloudGtmInstanceConfigAddressPool"
+                  : "ReplaceCloudGtmAddressPoolAddress",
+                parent.kind,
+                parent.id,
+              );
+              const field =
+                  parent.kind === "list" ? "AddressPools" : "Addresses",
+                idField =
+                  parent.kind === "list" ? "AddressPoolId" : "AddressId";
+              editor.values[field] ??= [];
+              editor.values[field].push({
+                [idField]: result.resource_id,
+                WeightValue: 1,
+                SerialNumber:
+                  Math.max(
+                    0,
+                    ...editor.values[field].map(
+                      (row) => Number(row.SerialNumber) || 0,
+                    ),
+                  ) + 1,
+                RequestSource: ["default"],
+              });
+              editor.bindingHint =
+                "新资源已创建，当前尚未绑定。请预览并确认此关联。";
+              drawEditor();
+            }
+          },
+          "确认提交",
+        );
+      }, 0);
+    };
+    const form = document.querySelector("#gtm-editor-form");
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const btn = event.submitter;
+      btn.disabled = true;
+      try {
+        await onSubmit(new FormData(form), form);
+      } catch (error) {
+        form.querySelector(".dialog-error").textContent = error.message;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+    form.elements.operation?.addEventListener("change", async () => {
+      const previous = editor.operation;
+      try {
+        await edit(
+          form.elements.operation.value,
+          editor.spec.kind,
+          editor.resource[ids[editor.spec.kind]],
+        );
+        if (form.isConnected && editor?.operation === previous)
+          form.elements.operation.value = previous;
+      } catch (error) {
+        if (form.isConnected) {
+          form.elements.operation.value = previous;
+          form.querySelector(".dialog-error").textContent = error.message;
+        }
+      }
+    });
     for (const key of ["Protocol", "IpVersion"])
       form
         .querySelector(`[data-gtm-path='["${key}"]'] select`)
@@ -495,8 +594,22 @@ export function createGtm({ api, ctx, render, queryResources }) {
         .join("")}</dl>`;
     return e(enums[value] || String(value));
   }
-  async function edit(operation, kind, id) {
-    const c = ctx();
+  function mayDiscard() {
+    const form = document.querySelector("#gtm-editor-form");
+    if (!editor || !form) return true;
+    try {
+      if (JSON.stringify(collect(form)) === JSON.stringify(editor.baseline))
+        return true;
+    } catch {}
+    return window.confirm(
+      "当前编辑尚未提交，切换操作会放弃这些修改，是否继续？",
+    );
+  }
+  async function edit(operation, kind, id, attach = null) {
+    if (!mayDiscard()) return;
+    const requested = ++session;
+    const c = ctx(),
+      selectedAccount = c.account;
     if (!c.account) throw new Error("请先选择阿里云账号");
     const op = (await catalog())[operation];
     if (!op) throw new Error("不支持此操作");
@@ -516,8 +629,16 @@ export function createGtm({ api, ctx, render, queryResources }) {
         });
     const resource = normalizeGtm(detail.resource),
       opts = await options();
+    if (requested !== session || selectedAccount !== ctx().account) return;
     editor = {
-      session: ++session,
+      session: requested,
+      attach,
+      root: c.gtmDetail
+        ? {
+            kind: c.gtmDetail.kind,
+            id: c.gtmDetail.resource[ids[c.gtmDetail.kind]],
+          }
+        : null,
       account: c.account,
       operation,
       spec: op,
@@ -533,9 +654,23 @@ export function createGtm({ api, ctx, render, queryResources }) {
         ((editor.values.Protocol || resource.Protocol) === "ping"
           ? { packetNum: 20, packetLossRate: 30 }
           : { path: "/", code: 500, sni: true, followRedirect: false });
+    if (attach?.parenttype && op.create) {
+      if (op.kind === "addresses") editor.values.Type = attach.parenttype;
+      if (op.kind === "pools")
+        editor.values.AddressPoolType =
+          attach.parenttype === "AAAA"
+            ? "IPv6"
+            : attach.parenttype === "CNAME"
+              ? "domain"
+              : "IPv4";
+    }
+    editor.baseline = structuredClone(editor.values);
     drawEditor();
   }
   async function open(kind, id) {
+    if (!mayDiscard()) return;
+    editor = null;
+    ++session;
     const c = ctx(),
       account = c.account;
     const detail = await api("gtm.resource", {
@@ -553,52 +688,55 @@ export function createGtm({ api, ctx, render, queryResources }) {
     await catalog();
     render();
   }
-  function operationButtons(kind, resource) {
-    const catalog = ctx().gtmCatalog || {};
-    return `<div class="toolbar">${Object.entries(catalog)
-      .filter(([, op]) => op.kind === kind && !op.create)
-      .map(([operation, op]) =>
-        button(
-          op.delete && kind !== "list" ? "全局" + op.label : op.label,
-          "gtm.edit",
-          { operation, kind, id: resource[ids[kind]] },
-          op.delete ? "danger" : "",
-        ),
-      )
-      .join("")}</div>`;
+  function inspectorShell() {
+    return editor
+      ? '<aside class="gtm-inspector" id="gtm-inspector" aria-label="GTM 参数编辑"></aside>'
+      : "";
   }
   function topology(detail) {
     const resource = normalizeGtm(detail.resource),
       kind = detail.kind;
-    const card = (type, row) =>
-      `<article class="gtm-node gtm-node-${type}"><div class="gtm-node-title"><strong>${e(gtmName(row))}</strong>${openButton(type, row, "打开")}</div><small class="mono">${e(row[ids[type]])}</small><div class="toolbar">${stateBadge(row)}</div>${row.Address ? `<p>${e(row.Address)}</p>` : ""}${row.WeightValue !== undefined || row.SerialNumber !== undefined ? `<small>权重 ${e(row.WeightValue ?? "—")} · 顺序 ${e(row.SerialNumber ?? "—")}</small>` : ""}</article>`;
-    let graph = "";
+    const opFor = (type, mode) =>
+      ({
+        list: {
+          basic: "UpdateCloudGtmInstanceConfigBasic",
+          policy: "UpdateCloudGtmInstanceConfigLbStrategy",
+          link: "ReplaceCloudGtmInstanceConfigAddressPool",
+        },
+        pools: {
+          basic: "UpdateCloudGtmAddressPoolBasicConfig",
+          policy: "UpdateCloudGtmAddressPoolLbStrategy",
+          link: "ReplaceCloudGtmAddressPoolAddress",
+        },
+        addresses: {
+          basic: "UpdateCloudGtmAddress",
+          link: "UpdateCloudGtmAddress",
+        },
+        monitors: { basic: "UpdateCloudGtmMonitorTemplate" },
+      })[type][mode];
+    const action = (type, row, mode, label) =>
+      button(
+        label,
+        "gtm.edit",
+        { kind: type, id: row[ids[type]], operation: opFor(type, mode) },
+        "text",
+      );
+    const card = (type, row) => {
+      const selected =
+        editor?.spec.kind === type &&
+        editor.resource[ids[type]] === row[ids[type]];
+      return `<article class="gtm-node gtm-node-${type} ${selected ? "selected" : ""}"><div class="gtm-node-title"><button type="button" class="gtm-node-name" data-action="gtm.edit" data-kind="${type}" data-id="${e(row[ids[type]])}" data-operation="${opFor(type, "basic")}">${e(gtmName(row))}</button><span class="gtm-kind">${e(kinds[type])}</span></div><div class="gtm-node-meta">${stateBadge(row)}${row.Ttl ? `<span>TTL ${e(row.Ttl)}s</span>` : ""}</div>${row.Address ? `<div class="gtm-node-address mono">${e(row.Address)}</div>` : ""}<div class="gtm-node-meta">${row.SerialNumber !== undefined ? `<span>序 ${e(row.SerialNumber)}</span>` : ""}${row.WeightValue !== undefined ? `<span>权重 ${e(row.WeightValue)}</span>` : ""}${enums[row.AddressPoolLbStrategy || row.AddressLbStrategy] ? `<span>${e(enums[row.AddressPoolLbStrategy || row.AddressLbStrategy])}</span>` : ""}</div><div class="gtm-node-actions">${action(type, row, "basic", "配置")}${opFor(type, "policy") ? action(type, row, "policy", "策略") : ""}${opFor(type, "link") ? action(type, row, "link", type === "addresses" ? "健康检查" : "管理关联") : ""}${type === "list" || type === "pools" ? button(type === "list" ? "新增地址池" : "新增地址", "gtm.create", { kind: type === "list" ? "pools" : "addresses", parentkind: type, parentid: row[ids[type]], parenttype: row.ScheduleRrType || row.AddressPoolType }, "text") : ""}</div>${type === "addresses" && row.HealthTasks?.length ? `<div class="gtm-monitor-chips">${row.HealthTasks.map((task) => action("monitors", { TemplateId: task.TemplateId, Name: task.TemplateName }, "basic", (task.TemplateName || task.TemplateId) + (task.Port !== undefined ? ":" + task.Port : ""))).join("")}</div>` : ""}</article>`;
+    };
+    const branch = (pool) =>
+      `<section class="gtm-lane"><div class="gtm-pool-column">${card("pools", pool)}</div><div class="gtm-address-grid gtm-tree-addresses">${(pool.Addresses || []).map((address) => `<div class="gtm-address-leaf">${card("addresses", address)}</div>`).join("") || '<span class="help">暂无地址，点击地址池的“管理关联”添加。</span>'}</div></section>`;
+    let graph;
     if (kind === "list")
-      graph = `<div class="gtm-topology-root">${card("list", resource)}</div><div class="gtm-topology-branches">${(resource.AddressPools || []).map((pool) => `<section class="gtm-branch">${card("pools", pool)}<div class="gtm-branch-addresses">${(pool.Addresses || []).map((address) => card("addresses", address)).join("") || '<p class="help">暂无地址</p>'}</div></section>`).join("") || '<p class="help">尚未关联地址池，可通过“关联地址池”添加。</p>'}</div>`;
-    if (kind === "pools")
-      graph = `<div class="gtm-topology-root">${card("pools", resource)}</div><div class="gtm-topology-branches">${(resource.Addresses || []).map((address) => `<section class="gtm-branch">${card("addresses", address)}</section>`).join("") || '<p class="help">尚未关联地址</p>'}</div>`;
-    if (kind === "addresses")
-      graph = `<div class="gtm-topology-root">${card("addresses", resource)}</div><div class="gtm-topology-branches">${(resource.HealthTasks || []).map((task) => card("monitors", { ...task, Name: task.TemplateName })).join("") || '<p class="help">未配置健康探测</p>'}</div>`;
-    if (kind === "monitors")
-      graph = `<dl class="gtm-values"><dt>探测协议</dt><dd>${e(resource.Protocol)}</dd><dt>IP 版本</dt><dd>${e(resource.IpVersion)}</dd><dt>间隔</dt><dd>${e(resource.Interval)} 秒</dd><dt>超时</dt><dd>${e(resource.Timeout)} 毫秒</dd><dt>连续失败</dt><dd>${e(resource.EvaluationCount)} 次</dd><dt>探测节点</dt><dd>${(resource.IspCityNodes || []).map((n) => e([n.CityName, n.IspName].filter(Boolean).join(" / "))).join("、")}</dd></dl>`;
-    return panel(
-      `${kinds[kind]} · ${gtmName(resource)}`,
-      `<div class="panel-body"><div class="gtm-detail-summary">${stateBadge(resource)}${resource.Ttl ? `<span>TTL ${e(resource.Ttl)} 秒</span>` : ""}${resource.ScheduleRrType ? badge(resource.ScheduleRrType) : ""}</div>${operationButtons(kind, resource)}<div class="gtm-topology">${graph}</div>${
-        detail.references.length
-          ? `<div class="section-label">被 ${detail.references.length} 项资源引用</div><div class="gtm-reference-list">${detail.references
-              .map((row) => {
-                const type = row.ConfigId
-                  ? "list"
-                  : row.AddressPoolId
-                    ? "pools"
-                    : "addresses";
-                return `<div>${e(gtmName(row))} ${openButton(type, row, "查看引用")}</div>`;
-              })
-              .join("")}</div>`
-          : '<p class="help">暂无上级引用</p>'
-      }</div>`,
-      button("关闭详情", "gtm.close", {}, "text"),
-    );
+      graph = `<div class="gtm-domain-column">${card("list", resource)}</div><div class="gtm-lanes">${(resource.AddressPools || []).map(branch).join("") || '<p class="help">暂无地址池，点击接入域名的“管理关联”添加。</p>'}</div>`;
+    else if (kind === "pools") graph = branch(resource);
+    else if (kind === "addresses")
+      graph = `<div class="gtm-address-grid">${card("addresses", resource)}</div>`;
+    else graph = card("monitors", resource);
+    return `<section class="gtm-workbench"><header class="gtm-workbench-head"><div class="toolbar">${button("返回列表", "gtm.close", {}, "text")}<strong>${e(gtmName(resource))}</strong>${badge("GTM 3.0")}</div><div class="toolbar">${button("刷新画布", "gtm.canvas.refresh", {}, "text")}${button("新建地址池", "gtm.create", { kind: "pools" }, "text", "plus")}${button("新建地址", "gtm.create", { kind: "addresses" }, "text", "plus")}</div></header><div class="gtm-workspace ${editor ? "editing" : ""}"><div class="gtm-canvas" aria-label="GTM 关联画布"><div class="gtm-canvas-hint">点击节点直接编辑 · 管理关联可增删、排序 · 修改后预览确认</div><div class="gtm-graph gtm-graph-${kind}">${graph}</div></div>${inspectorShell()}</div></section>`;
   }
   function view(c) {
     const tab = c.tab in kinds ? c.tab : "list";
@@ -629,6 +767,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
           ),
         )
       );
+    if (c.gtmDetail) return tabs + topology(c.gtmDetail);
     return (
       tabs +
       `<div class="notice">GTM 3.0 · 地址池、地址、探测模板为账号级共享资源。先选择账号并查询，再打开资源进行可视化配置。</div>` +
@@ -664,11 +803,13 @@ export function createGtm({ api, ctx, render, queryResources }) {
           "plus",
         ),
       ) +
-      (c.gtmDetail ? topology(c.gtmDetail) : "")
+      inspectorShell()
     );
   }
   const actions = {
     "gtm.tab": async (d) => {
+      if (!mayDiscard()) return;
+      editor = null;
       const c = ctx();
       c.tab = d.tab;
       c.page = 1;
@@ -701,6 +842,8 @@ export function createGtm({ api, ctx, render, queryResources }) {
     },
     "gtm.open": (d) => open(d.kind, d.id),
     "gtm.close": () => {
+      if (!mayDiscard()) return;
+      editor = null;
       ctx().gtmDetail = null;
       render();
     },
@@ -708,12 +851,32 @@ export function createGtm({ api, ctx, render, queryResources }) {
       const op = Object.entries(await catalog()).find(
         ([, op]) => op.kind === d.kind && op.create,
       )?.[0];
-      await edit(op, d.kind);
+      await edit(
+        op,
+        d.kind,
+        undefined,
+        d.parentid
+          ? { kind: d.parentkind, id: d.parentid, parenttype: d.parenttype }
+          : null,
+      );
     },
     "gtm.edit": (d) => edit(d.operation, d.kind, d.id),
-    "gtm.back": () => drawEditor(),
+    "gtm.back": () => {
+      document.querySelector("#dialog").close();
+      drawEditor();
+    },
+    "gtm.inspector.close": () => {
+      if (!mayDiscard()) return;
+      ++session;
+      editor = null;
+      render();
+    },
+    "gtm.canvas.refresh": () => {
+      const detail = ctx().gtmDetail;
+      return open(detail.kind, detail.resource[ids[detail.kind]]);
+    },
     "gtm.row.add": (d) => {
-      editor.values = collect(document.querySelector("#modal-form"));
+      editor.values = collect(document.querySelector("#gtm-editor-form"));
       const path = JSON.parse(d.path);
       let list = editor.values,
         schema = { type: "object", properties: editor.spec.fields };
@@ -736,7 +899,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
       drawEditor();
     },
     "gtm.row.move": (d) => {
-      editor.values = collect(document.querySelector("#modal-form"));
+      editor.values = collect(document.querySelector("#gtm-editor-form"));
       const path = JSON.parse(d.path);
       let parent = editor.values;
       for (const key of path.slice(0, -1)) parent = parent[key];
@@ -745,12 +908,21 @@ export function createGtm({ api, ctx, render, queryResources }) {
       drawEditor();
     },
     "gtm.row.remove": (d) => {
-      editor.values = collect(document.querySelector("#modal-form"));
+      editor.values = collect(document.querySelector("#gtm-editor-form"));
       let list = editor.values;
       for (const key of JSON.parse(d.path)) list = list[key];
       list.splice(Number(d.index), 1);
       drawEditor();
     },
   };
-  return { view, actions };
+  return {
+    view,
+    actions,
+    leave: () => {
+      if (!mayDiscard()) return false;
+      ++session;
+      editor = null;
+      return true;
+    },
+  };
 }

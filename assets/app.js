@@ -573,13 +573,7 @@ function cfView() {
   );
 }
 function gtmView() {
-  return (
-    pageHead() +
-    resourceControls("gtm") +
-    resourceError() +
-    gtm.view(ctx()) +
-    (ctx().tab === "history" ? "" : pagination(ctx().total, 100, ctx().page))
-  );
+  return `<div class="gtm-page ${ctx().gtmDetail ? "canvas-mode" : ""}">${pageHead() + resourceControls("gtm") + resourceError() + gtm.view(ctx()) + (ctx().tab === "history" || ctx().gtmDetail ? "" : pagination(ctx().total, 100, ctx().page))}</div>`;
 }
 const features = {
   balance_enabled: "钱包余额",
@@ -1938,6 +1932,7 @@ document.addEventListener("submit", async (event) => {
   try {
     const data = Object.fromEntries(new FormData(form));
     if (formId === "resource-form") {
+      if (route === "gtm" && !gtm.leave()) return;
       const c = ctx();
       if (route === "gtm" && String(c.account) !== String(data.account_id)) {
         delete c.gtmCatalog;
@@ -1985,6 +1980,10 @@ document.addEventListener("submit", async (event) => {
   }
 });
 window.addEventListener("hashchange", () => {
+  if (route === "gtm" && location.hash !== "#/gtm" && !gtm.leave()) {
+    history.replaceState(null, "", "#/gtm");
+    return;
+  }
   if (boot.authenticated) render();
 });
 async function start() {
