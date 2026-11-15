@@ -10,11 +10,11 @@ jobs:
       - name: Check PHP syntax
         run: find _core tests -name '*.php' ! -name view.php -print0 | xargs -0 -n1 php -l && php -l index.php
       - name: Check JavaScript syntax
-        run: node --check assets/app.js && node --check assets/ui.js && node --check assets/config-form.js
+        run: node --check assets/app.js && node --check assets/ui.js && node --check assets/config-form.js && node --check assets/gtm.js
       - name: Recursive configuration form tests
-        run: node tests/config-form.mjs && node tests/config-edit.mjs
+        run: node tests/config-form.mjs && node tests/config-edit.mjs && node tests/gtm-form.mjs
       - name: Native unit tests
-        run: php tests/unit.php && php tests/default-template.php && php tests/reliability.php
+        run: php tests/unit.php && php tests/default-template.php && php tests/reliability.php && php tests/gtm.php && php tests/gtm-isolation.php
       - name: Isolated HTTP integration tests
         run: PHP_BINARY=php python3 tests/integration.py
       - name: Same-directory deployment and update tests

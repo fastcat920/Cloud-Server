@@ -1,0 +1,1006 @@
+{
+  "CreateCloudGtmInstanceConfig": {
+    "label": "创建接入域名",
+    "kind": "list",
+    "create": true,
+    "delete": false,
+    "fields": {
+      "InstanceId": {
+        "type": "string",
+        "label": "绑定的已购实例",
+        "required": false
+      },
+      "ScheduleZoneMode": {
+        "type": "string",
+        "label": "域名配置方式",
+        "required": false,
+        "enum": [
+          "custom"
+        ]
+      },
+      "ScheduleZoneName": {
+        "type": "string",
+        "label": "托管域名",
+        "required": false
+      },
+      "ScheduleHostname": {
+        "type": "string",
+        "label": "主机记录",
+        "required": false
+      },
+      "ScheduleRrType": {
+        "type": "string",
+        "label": "记录类型",
+        "required": false,
+        "enum": [
+          "A",
+          "AAAA",
+          "CNAME"
+        ]
+      },
+      "Ttl": {
+        "type": "integer",
+        "label": "全局 TTL（秒）",
+        "required": false,
+        "minimum": 1
+      },
+      "Remark": {
+        "type": "string",
+        "label": "备注",
+        "required": false
+      },
+      "EnableStatus": {
+        "type": "string",
+        "label": "启用状态",
+        "required": false,
+        "enum": [
+          "enable",
+          "disable"
+        ]
+      },
+      "ChargeType": {
+        "type": "string",
+        "label": "计费方式",
+        "required": false,
+        "enum": [
+          "prepay"
+        ]
+      }
+    },
+    "json": [],
+    "clientToken": true
+  },
+  "UpdateCloudGtmInstanceConfigBasic": {
+    "label": "基础配置",
+    "kind": "list",
+    "create": false,
+    "delete": false,
+    "fields": {
+      "InstanceId": {
+        "type": "string",
+        "label": "绑定的已购实例",
+        "required": false
+      },
+      "ConfigId": {
+        "type": "string",
+        "label": "接入配置 ID",
+        "required": true
+      },
+      "ScheduleZoneName": {
+        "type": "string",
+        "label": "托管域名",
+        "required": false
+      },
+      "ScheduleHostname": {
+        "type": "string",
+        "label": "主机记录",
+        "required": false
+      },
+      "Ttl": {
+        "type": "integer",
+        "label": "全局 TTL（秒）",
+        "required": false,
+        "minimum": 1
+      }
+    },
+    "json": [],
+    "clientToken": true
+  },
+  "UpdateCloudGtmInstanceConfigLbStrategy": {
+    "label": "负载策略",
+    "kind": "list",
+    "create": false,
+    "delete": false,
+    "fields": {
+      "InstanceId": {
+        "type": "string",
+        "label": "绑定的已购实例",
+        "required": false
+      },
+      "ConfigId": {
+        "type": "string",
+        "label": "接入配置 ID",
+        "required": true
+      },
+      "AddressPoolLbStrategy": {
+        "type": "string",
+        "label": "地址池间调度策略",
+        "required": false,
+        "enum": [
+          "round_robin",
+          "sequence",
+          "weight",
+          "source_nearest"
+        ]
+      },
+      "SequenceLbStrategyMode": {
+        "type": "string",
+        "label": "恢复后切换方式",
+        "required": false,
+        "enum": [
+          "preemptive",
+          "non_preemptive"
+        ]
+      }
+    },
+    "json": [],
+    "clientToken": true
+  },
+  "UpdateCloudGtmInstanceConfigEnableStatus": {
+    "label": "启用 / 禁用",
+    "kind": "list",
+    "create": false,
+    "delete": false,
+    "fields": {
+      "InstanceId": {
+        "type": "string",
+        "label": "绑定的已购实例",
+        "required": false
+      },
+      "ConfigId": {
+        "type": "string",
+        "label": "接入配置 ID",
+        "required": true
+      },
+      "EnableStatus": {
+        "type": "string",
+        "label": "启用状态",
+        "required": false,
+        "enum": [
+          "enable",
+          "disable"
+        ]
+      }
+    },
+    "json": [],
+    "clientToken": true
+  },
+  "UpdateCloudGtmInstanceConfigRemark": {
+    "label": "备注",
+    "kind": "list",
+    "create": false,
+    "delete": false,
+    "fields": {
+      "InstanceId": {
+        "type": "string",
+        "label": "绑定的已购实例",
+        "required": false
+      },
+      "ConfigId": {
+        "type": "string",
+        "label": "接入配置 ID",
+        "required": true
+      },
+      "Remark": {
+        "type": "string",
+        "label": "备注",
+        "required": false
+      }
+    },
+    "json": [],
+    "clientToken": true
+  },
+  "ReplaceCloudGtmInstanceConfigAddressPool": {
+    "label": "关联地址池",
+    "kind": "list",
+    "create": false,
+    "delete": false,
+    "fields": {
+      "InstanceId": {
+        "type": "string",
+        "label": "绑定的已购实例",
+        "required": false
+      },
+      "AddressPools": {
+        "type": "array",
+        "label": "关联地址池",
+        "required": true,
+        "items": {
+          "type": "object",
+          "label": "item",
+          "required": false,
+          "properties": {
+            "AddressPoolId": {
+              "type": "string",
+              "label": "地址池",
+              "required": true
+            },
+            "WeightValue": {
+              "type": "integer",
+              "label": "权重",
+              "required": false,
+              "minimum": 1,
+              "maximum": 100
+            },
+            "SerialNumber": {
+              "type": "integer",
+              "label": "优先顺序",
+              "required": false,
+              "minimum": 1
+            },
+            "RequestSource": {
+              "type": "array",
+              "label": "请求来源线路",
+              "required": false,
+              "items": {
+                "type": "string",
+                "label": "item",
+                "required": false
+              },
+              "maxItems": 100
+            }
+          }
+        },
+        "maxItems": 100
+      },
+      "ConfigId": {
+        "type": "string",
+        "label": "接入配置 ID",
+        "required": true
+      }
+    },
+    "json": [
+      "AddressPools"
+    ],
+    "clientToken": true
+  },
+  "DeleteCloudGtmInstanceConfig": {
+    "label": "删除接入域名",
+    "kind": "list",
+    "create": false,
+    "delete": true,
+    "fields": {
+      "InstanceId": {
+        "type": "string",
+        "label": "绑定的已购实例",
+        "required": false
+      },
+      "ConfigId": {
+        "type": "string",
+        "label": "接入配置 ID",
+        "required": true
+      }
+    },
+    "json": [],
+    "clientToken": true
+  },
+  "CreateCloudGtmAddressPool": {
+    "label": "创建地址池",
+    "kind": "pools",
+    "create": true,
+    "delete": false,
+    "fields": {
+      "AddressPoolName": {
+        "type": "string",
+        "label": "地址池名称",
+        "required": false
+      },
+      "AddressPoolType": {
+        "type": "string",
+        "label": "地址池类型",
+        "required": false,
+        "enum": [
+          "IPv4",
+          "IPv6",
+          "domain"
+        ]
+      },
+      "HealthJudgement": {
+        "type": "string",
+        "label": "健康判定条件",
+        "required": false,
+        "enum": [
+          "any_ok",
+          "p30_ok",
+          "p50_ok",
+          "p70_ok",
+          "all_ok"
+        ]
+      },
+      "EnableStatus": {
+        "type": "string",
+        "label": "启用状态",
+        "required": false,
+        "enum": [
+          "enable",
+          "disable"
+        ]
+      },
+      "Remark": {
+        "type": "string",
+        "label": "备注",
+        "required": false
+      }
+    },
+    "json": [],
+    "clientToken": true
+  },
+  "UpdateCloudGtmAddressPoolBasicConfig": {
+    "label": "基础配置",
+    "kind": "pools",
+    "create": false,
+    "delete": false,
+    "fields": {
+      "AddressPoolId": {
+        "type": "string",
+        "label": "地址池",
+        "required": true
+      },
+      "AddressPoolName": {
+        "type": "string",
+        "label": "地址池名称",
+        "required": false
+      },
+      "HealthJudgement": {
+        "type": "string",
+        "label": "健康判定条件",
+        "required": false,
+        "enum": [
+          "any_ok",
+          "p30_ok",
+          "p50_ok",
+          "p70_ok",
+          "all_ok"
+        ]
+      }
+    },
+    "json": [],
+    "clientToken": true
+  },
+  "UpdateCloudGtmAddressPoolLbStrategy": {
+    "label": "负载策略",
+    "kind": "pools",
+    "create": false,
+    "delete": false,
+    "fields": {
+      "AddressPoolId": {
+        "type": "string",
+        "label": "地址池",
+        "required": true
+      },
+      "AddressLbStrategy": {
+        "type": "string",
+        "label": "地址间调度策略",
+        "required": false,
+        "enum": [
+          "round_robin",
+          "sequence",
+          "weight",
+          "source_nearest"
+        ]
+      },
+      "SequenceLbStrategyMode": {
+        "type": "string",
+        "label": "恢复后切换方式",
+        "required": false,
+        "enum": [
+          "preemptive",
+          "non_preemptive"
+        ]
+      }
+    },
+    "json": [],
+    "clientToken": true
+  },
+  "UpdateCloudGtmAddressPoolEnableStatus": {
+    "label": "启用 / 禁用",
+    "kind": "pools",
+    "create": false,
+    "delete": false,
+    "fields": {
+      "AddressPoolId": {
+        "type": "string",
+        "label": "地址池",
+        "required": true
+      },
+      "EnableStatus": {
+        "type": "string",
+        "label": "启用状态",
+        "required": false,
+        "enum": [
+          "enable",
+          "disable"
+        ]
+      }
+    },
+    "json": [],
+    "clientToken": true
+  },
+  "UpdateCloudGtmAddressPoolRemark": {
+    "label": "备注",
+    "kind": "pools",
+    "create": false,
+    "delete": false,
+    "fields": {
+      "AddressPoolId": {
+        "type": "string",
+        "label": "地址池",
+        "required": true
+      },
+      "Remark": {
+        "type": "string",
+        "label": "备注",
+        "required": false
+      }
+    },
+    "json": [],
+    "clientToken": true
+  },
+  "ReplaceCloudGtmAddressPoolAddress": {
+    "label": "关联地址",
+    "kind": "pools",
+    "create": false,
+    "delete": false,
+    "fields": {
+      "AddressPoolId": {
+        "type": "string",
+        "label": "地址池",
+        "required": true
+      },
+      "Addresses": {
+        "type": "array",
+        "label": "关联地址",
+        "required": true,
+        "items": {
+          "type": "object",
+          "label": "item",
+          "required": false,
+          "properties": {
+            "AddressId": {
+              "type": "string",
+              "label": "地址",
+              "required": true
+            },
+            "WeightValue": {
+              "type": "integer",
+              "label": "权重",
+              "required": false,
+              "minimum": 1,
+              "maximum": 100
+            },
+            "SerialNumber": {
+              "type": "integer",
+              "label": "优先顺序",
+              "required": false,
+              "minimum": 1
+            },
+            "RequestSource": {
+              "type": "array",
+              "label": "请求来源线路",
+              "required": false,
+              "items": {
+                "type": "string",
+                "label": "item",
+                "required": false
+              },
+              "maxItems": 100
+            }
+          }
+        },
+        "maxItems": 100
+      }
+    },
+    "json": [
+      "Addresses"
+    ],
+    "clientToken": true
+  },
+  "DeleteCloudGtmAddressPool": {
+    "label": "删除地址池",
+    "kind": "pools",
+    "create": false,
+    "delete": true,
+    "fields": {
+      "AddressPoolId": {
+        "type": "string",
+        "label": "地址池",
+        "required": true
+      }
+    },
+    "json": [],
+    "clientToken": true
+  },
+  "CreateCloudGtmAddress": {
+    "label": "创建地址",
+    "kind": "addresses",
+    "create": true,
+    "delete": false,
+    "fields": {
+      "Name": {
+        "type": "string",
+        "label": "名称",
+        "required": true
+      },
+      "Type": {
+        "type": "string",
+        "label": "地址类型",
+        "required": true,
+        "enum": [
+          "IPv4",
+          "IPv6",
+          "domain"
+        ]
+      },
+      "Address": {
+        "type": "string",
+        "label": "服务地址",
+        "required": true
+      },
+      "Remark": {
+        "type": "string",
+        "label": "备注",
+        "required": false
+      },
+      "EnableStatus": {
+        "type": "string",
+        "label": "启用状态",
+        "required": true,
+        "enum": [
+          "enable",
+          "disable"
+        ]
+      },
+      "AvailableMode": {
+        "type": "string",
+        "label": "故障切换模式",
+        "required": true,
+        "enum": [
+          "auto",
+          "manual"
+        ]
+      },
+      "ManualAvailableStatus": {
+        "type": "string",
+        "label": "人工可用状态",
+        "required": false,
+        "enum": [
+          "available",
+          "unavailable"
+        ]
+      },
+      "HealthJudgement": {
+        "type": "string",
+        "label": "健康判定条件",
+        "required": true,
+        "enum": [
+          "any_ok",
+          "p30_ok",
+          "p50_ok",
+          "p70_ok",
+          "all_ok"
+        ]
+      },
+      "HealthTasks": {
+        "type": "array",
+        "label": "关联探测模板",
+        "required": false,
+        "items": {
+          "type": "object",
+          "label": "item",
+          "required": false,
+          "properties": {
+            "Port": {
+              "type": "integer",
+              "label": "探测端口",
+              "required": false,
+              "minimum": 0,
+              "maximum": 65535
+            },
+            "TemplateId": {
+              "type": "string",
+              "label": "探测模板",
+              "required": false
+            }
+          }
+        },
+        "maxItems": 100
+      }
+    },
+    "json": [
+      "HealthTasks"
+    ],
+    "clientToken": true
+  },
+  "UpdateCloudGtmAddress": {
+    "label": "基础配置",
+    "kind": "addresses",
+    "create": false,
+    "delete": false,
+    "fields": {
+      "AddressId": {
+        "type": "string",
+        "label": "地址",
+        "required": true
+      },
+      "Name": {
+        "type": "string",
+        "label": "名称",
+        "required": false
+      },
+      "Address": {
+        "type": "string",
+        "label": "服务地址",
+        "required": false
+      },
+      "HealthJudgement": {
+        "type": "string",
+        "label": "健康判定条件",
+        "required": false,
+        "enum": [
+          "any_ok",
+          "p30_ok",
+          "p50_ok",
+          "p70_ok",
+          "all_ok"
+        ]
+      },
+      "HealthTasks": {
+        "type": "array",
+        "label": "关联探测模板",
+        "required": false,
+        "items": {
+          "type": "object",
+          "label": "item",
+          "required": false,
+          "properties": {
+            "Port": {
+              "type": "integer",
+              "label": "探测端口",
+              "required": false,
+              "minimum": 0,
+              "maximum": 65535
+            },
+            "TemplateId": {
+              "type": "string",
+              "label": "探测模板",
+              "required": false
+            }
+          }
+        },
+        "maxItems": 100
+      }
+    },
+    "json": [
+      "HealthTasks"
+    ],
+    "clientToken": true
+  },
+  "UpdateCloudGtmAddressEnableStatus": {
+    "label": "启用 / 禁用",
+    "kind": "addresses",
+    "create": false,
+    "delete": false,
+    "fields": {
+      "AddressId": {
+        "type": "string",
+        "label": "地址",
+        "required": true
+      },
+      "EnableStatus": {
+        "type": "string",
+        "label": "启用状态",
+        "required": true,
+        "enum": [
+          "enable",
+          "disable"
+        ]
+      }
+    },
+    "json": [],
+    "clientToken": true
+  },
+  "UpdateCloudGtmAddressRemark": {
+    "label": "备注",
+    "kind": "addresses",
+    "create": false,
+    "delete": false,
+    "fields": {
+      "AddressId": {
+        "type": "string",
+        "label": "地址",
+        "required": true
+      },
+      "Remark": {
+        "type": "string",
+        "label": "备注",
+        "required": false
+      }
+    },
+    "json": [],
+    "clientToken": true
+  },
+  "UpdateCloudGtmAddressManualAvailableStatus": {
+    "label": "异常切换方式",
+    "kind": "addresses",
+    "create": false,
+    "delete": false,
+    "fields": {
+      "AddressId": {
+        "type": "string",
+        "label": "地址",
+        "required": true
+      },
+      "AvailableMode": {
+        "type": "string",
+        "label": "故障切换模式",
+        "required": false,
+        "enum": [
+          "auto",
+          "manual"
+        ]
+      },
+      "ManualAvailableStatus": {
+        "type": "string",
+        "label": "人工可用状态",
+        "required": false,
+        "enum": [
+          "available",
+          "unavailable"
+        ]
+      }
+    },
+    "json": [],
+    "clientToken": true
+  },
+  "DeleteCloudGtmAddress": {
+    "label": "删除地址",
+    "kind": "addresses",
+    "create": false,
+    "delete": true,
+    "fields": {
+      "AddressId": {
+        "type": "string",
+        "label": "地址",
+        "required": true
+      }
+    },
+    "json": [],
+    "clientToken": true
+  },
+  "CreateCloudGtmMonitorTemplate": {
+    "label": "创建探测模板",
+    "kind": "monitors",
+    "create": true,
+    "delete": false,
+    "fields": {
+      "Name": {
+        "type": "string",
+        "label": "名称",
+        "required": true
+      },
+      "IpVersion": {
+        "type": "string",
+        "label": "IP 版本",
+        "required": true,
+        "enum": [
+          "IPv4",
+          "IPv6"
+        ]
+      },
+      "Protocol": {
+        "type": "string",
+        "label": "探测协议",
+        "required": true,
+        "enum": [
+          "ping",
+          "tcp",
+          "http",
+          "https"
+        ]
+      },
+      "Interval": {
+        "type": "integer",
+        "label": "探测间隔（秒）",
+        "required": true,
+        "minimum": 1
+      },
+      "Timeout": {
+        "type": "integer",
+        "label": "超时（毫秒）",
+        "required": true,
+        "enum": [
+          2000,
+          3000,
+          5000,
+          10000
+        ]
+      },
+      "EvaluationCount": {
+        "type": "integer",
+        "label": "连续失败次数",
+        "required": true,
+        "enum": [
+          1,
+          2,
+          3
+        ]
+      },
+      "FailureRate": {
+        "type": "integer",
+        "label": "失败节点比例（%）",
+        "required": true,
+        "enum": [
+          20,
+          50,
+          80,
+          100
+        ]
+      },
+      "ExtendInfo": {
+        "type": "string",
+        "label": "协议参数",
+        "required": false
+      },
+      "IspCityNodes": {
+        "type": "array",
+        "label": "探测节点",
+        "required": true,
+        "items": {
+          "type": "object",
+          "label": "item",
+          "required": false,
+          "properties": {
+            "CityCode": {
+              "type": "string",
+              "label": "城市编码",
+              "required": false
+            },
+            "IspCode": {
+              "type": "string",
+              "label": "运营商编码",
+              "required": false
+            }
+          }
+        },
+        "maxItems": 100
+      }
+    },
+    "json": [
+      "IspCityNodes"
+    ],
+    "clientToken": true
+  },
+  "UpdateCloudGtmMonitorTemplate": {
+    "label": "基础配置",
+    "kind": "monitors",
+    "create": false,
+    "delete": false,
+    "fields": {
+      "TemplateId": {
+        "type": "string",
+        "label": "探测模板",
+        "required": true
+      },
+      "Name": {
+        "type": "string",
+        "label": "名称",
+        "required": false
+      },
+      "Interval": {
+        "type": "integer",
+        "label": "探测间隔（秒）",
+        "required": false,
+        "minimum": 1
+      },
+      "Timeout": {
+        "type": "integer",
+        "label": "超时（毫秒）",
+        "required": false,
+        "enum": [
+          2000,
+          3000,
+          5000,
+          10000
+        ]
+      },
+      "EvaluationCount": {
+        "type": "integer",
+        "label": "连续失败次数",
+        "required": false,
+        "enum": [
+          1,
+          2,
+          3
+        ]
+      },
+      "FailureRate": {
+        "type": "integer",
+        "label": "失败节点比例（%）",
+        "required": false,
+        "enum": [
+          20,
+          50,
+          80,
+          100
+        ]
+      },
+      "ExtendInfo": {
+        "type": "string",
+        "label": "协议参数",
+        "required": false
+      },
+      "IspCityNodes": {
+        "type": "array",
+        "label": "探测节点",
+        "required": false,
+        "items": {
+          "type": "object",
+          "label": "item",
+          "required": false,
+          "properties": {
+            "CityCode": {
+              "type": "string",
+              "label": "城市编码",
+              "required": false
+            },
+            "IspCode": {
+              "type": "string",
+              "label": "运营商编码",
+              "required": false
+            }
+          }
+        },
+        "maxItems": 100
+      }
+    },
+    "json": [
+      "IspCityNodes"
+    ],
+    "clientToken": true
+  },
+  "UpdateCloudGtmMonitorTemplateRemark": {
+    "label": "备注",
+    "kind": "monitors",
+    "create": false,
+    "delete": false,
+    "fields": {
+      "TemplateId": {
+        "type": "string",
+        "label": "探测模板",
+        "required": true
+      },
+      "Remark": {
+        "type": "string",
+        "label": "备注",
+        "required": false
+      }
+    },
+    "json": [],
+    "clientToken": true
+  },
+  "DeleteCloudGtmMonitorTemplate": {
+    "label": "删除探测模板",
+    "kind": "monitors",
+    "create": false,
+    "delete": true,
+    "fields": {
+      "TemplateId": {
+        "type": "string",
+        "label": "探测模板",
+        "required": true
+      }
+    },
+    "json": [],
+    "clientToken": true
+  }
+}

@@ -72,7 +72,7 @@ final class Cloud
         }
         return array_map(fn ($v) => $this->security->decrypt($v), $account['credentials']);
     }
-    public function rpc(array $account, string $action, array $params = [], string $region = '', string $service = 'ecs'): array
+    public function rpc(array $account, string $action, array $params = [], string $region = '', string $service = 'ecs', string $method = 'GET'): array
     {
         $params = array_diff_key($params, array_fill_keys(['Action','Format','Version','AccessKeyId','PublicKey','SecurityToken','Signature','SignatureMethod','SignatureVersion','SignatureNonce','Timestamp'], true));
         $keys = $this->credentials($account);
@@ -103,8 +103,9 @@ final class Cloud
             }
             ksort($flat);
             $canonical = http_build_query($flat, '', '&', PHP_QUERY_RFC3986);
-            $flat['Signature'] = base64_encode(hash_hmac('sha1', 'GET&%2F&'.rawurlencode($canonical), $secret.'&', true));
-            $data = Http::json('GET', 'https://'.$host.'/?'.http_build_query($flat, '', '&', PHP_QUERY_RFC3986));
+            $flat['Signature'] = base64_encode(hash_hmac('sha1', $method.'&%2F&'.rawurlencode($canonical), $secret.'&', true));
+            $encoded = http_build_query($flat, '', '&', PHP_QUERY_RFC3986);
+            $data = $method === 'POST' ? Http::json('POST', 'https://'.$host.'/', ['Content-Type'=>'application/x-www-form-urlencoded'], $encoded) : Http::json('GET', 'https://'.$host.'/?'.$encoded);
             if (isset($data['Code']) && !in_array((string)$data['Code'], ['200','Success'], true)) {
                 throw new \RuntimeException($data['Code'].'：'.($data['Message'] ?? '请求失败'));
             }

@@ -14,6 +14,7 @@ final class Checks
         foreach (['accounts','targets','versions','publications','settings','events'] as $table) {
             if (!isset($data[$table]) || !is_array($data[$table])) throw new ApiError('备份缺少数据表：'.$table);
         }
+        if (isset($data['gtm_changes']) && !is_array($data['gtm_changes'])) throw new ApiError('GTM 历史记录格式无效');
         foreach (['accounts','targets','versions','publications','plans','templates'] as $table) {
             $ids = [];
             foreach ($data[$table] ?? [] as $row) {

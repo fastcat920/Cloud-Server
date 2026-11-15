@@ -10,13 +10,14 @@ $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 if ($path !== '/' && $path !== '/index.php' && is_file($root.$path)) {
     return false;
 }
-foreach (['Store','Security','Cloud','Objects','Configs','Plans','Checks','Releases','Importer','Api'] as $file) {
+foreach (['Store','Security','Cloud','Objects','Configs','Plans','Checks','Releases','Gtm','Importer','Api'] as $file) {
     require_once $root.'/_core/'.$file.'.php';
 }
 CloudDesk\Http::$transport = function ($method, $url, $headers, $body) {
     $host = parse_url($url, PHP_URL_HOST);
     $path = parse_url($url, PHP_URL_PATH);
     parse_str(parse_url($url, PHP_URL_QUERY) ?? '', $query);
+    if ($method==='POST' && ($headers['Content-Type'] ?? '')==='application/x-www-form-urlencoded') parse_str($body,$query);
     if (str_contains($host, 'ecs.aliyuncs.com')) {
         return ['status' => 200,'body' => json_encode(['RequestId' => 'test','TotalCount' => 1,'Instances' => ['Instance' => [['InstanceId' => 'i-native-test','InstanceName' => 'Native test','Status' => 'Running','Cpu' => 2,'Memory' => 4096]]]])];
     }
@@ -25,6 +26,10 @@ CloudDesk\Http::$transport = function ($method, $url, $headers, $body) {
     }
     if (str_contains($host, 'api.ucloud')) {
         return ['status' => 200,'body' => json_encode(['RetCode' => 0,'TotalCount' => 1,'UHostSet' => [['UHostId' => 'uhost-native-test','State' => 'Running','CPU' => 2,'Memory' => 4096]]])];
+    }
+    if (str_contains($host,'alidns') && str_contains($query['Action'] ?? '', 'CloudGtm')) {
+        require_once __DIR__.'/gtm-fixture.php';
+        return gtmFixture($query);
     }
     if (str_contains($host, 'alidns')) {
         return ['status' => 200,'body' => json_encode(['RequestId' => 'test','TotalCount' => 1,'DomainRecords' => ['Record' => [['RecordId' => 'test-record','RR' => 'www','Type' => 'A','Value' => '192.0.2.10','TTL' => 600]]]])];

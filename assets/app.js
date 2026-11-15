@@ -1,3 +1,4 @@
+import { createGtm } from "./gtm.js";
 import {
   deleteParameter,
   moveParameter,
@@ -30,6 +31,7 @@ import {
   showJson,
   confirm,
 } from "./ui.js";
+
 const providers = {
   aliyun: "阿里云",
   tencent: "腾讯云",
@@ -117,6 +119,11 @@ const readActions = new Set([
   "gtm.pools",
   "gtm.addresses",
   "gtm.monitors",
+  "gtm.catalog",
+  "gtm.options",
+  "gtm.resource",
+  "gtm.references",
+  "gtm.history",
 ]);
 let boot = {},
   state = {},
@@ -219,6 +226,7 @@ const ctx = () =>
     zone: "",
     tab: "list",
   });
+const gtm = createGtm({ api, ctx, render, queryResources });
 const accountLogo = (a) =>
   `<div class="provider-logo ${e(a.provider)}">${e({ aliyun: "阿", tencent: "腾", ucloud: "U", cloudflare: "C" }[a.provider])}</div>`;
 function pageHead(actions = "") {
@@ -564,75 +572,13 @@ function cfView() {
     pagination(c.total, 50, c.page)
   );
 }
-const gtmOps = {
-  UpdateCloudGtmInstanceConfigBasic: "实例基本配置",
-  UpdateCloudGtmInstanceConfigLbStrategy: "实例负载策略",
-  UpdateCloudGtmInstanceConfigEnableStatus: "实例启停",
-  ReplaceCloudGtmInstanceConfigAddressPool: "绑定实例地址池",
-  CreateCloudGtmAddressPool: "新建地址池",
-  UpdateCloudGtmAddressPoolBasicConfig: "地址池基本配置",
-  UpdateCloudGtmAddressPoolRemark: "地址池备注",
-  UpdateCloudGtmAddressPoolEnableStatus: "地址池启停",
-  UpdateCloudGtmAddressPoolLbStrategy: "地址池负载策略",
-  DeleteCloudGtmAddressPool: "删除地址池",
-  ReplaceCloudGtmAddressPoolAddress: "绑定地址池地址",
-  CreateCloudGtmAddress: "新建地址",
-  UpdateCloudGtmAddress: "修改地址",
-  UpdateCloudGtmAddressRemark: "地址备注",
-  UpdateCloudGtmAddressEnableStatus: "地址启停",
-  UpdateCloudGtmAddressManualAvailableStatus: "手动可用状态",
-  DeleteCloudGtmAddress: "删除地址",
-};
-function findRows(value) {
-  if (!value || typeof value !== "object") return [];
-  for (const v of Object.values(value)) if (Array.isArray(v)) return v;
-  for (const v of Object.values(value)) {
-    const rows = findRows(v);
-    if (rows.length) return rows;
-  }
-  return [];
-}
 function gtmView() {
-  const c = ctx();
-  const tabs = {
-    list: "实例配置",
-    pools: "地址池",
-    addresses: "地址资源",
-    monitors: "健康检查模板",
-  };
   return (
-    pageHead(button("管理配置", "gtm.action", {}, "primary", "settings")) +
+    pageHead() +
     resourceControls("gtm") +
-    `<div class="tabs">${Object.entries(tabs)
-      .map(
-        ([k, v]) =>
-          `<button class="tab ${c.tab === k ? "active" : ""}" data-action="gtm.tab" data-tab="${k}">${v}</button>`,
-      )
-      .join("")}</div>` +
     resourceError() +
-    panel(
-      tabs[c.tab],
-      table(
-        ["资源名称 / ID", "状态", "详情"],
-        c.items.map((r, i) => [
-          e(
-            r.ConfigName ||
-              r.AddressPoolName ||
-              r.Name ||
-              r.Address ||
-              r.ConfigId ||
-              r.AddressPoolId ||
-              r.AddressId ||
-              r.MonitorTemplateId ||
-              "资源",
-          ),
-          badge(r.EnableStatus || r.AvailableStatus || r.Status || "—"),
-          button("查看 / 编辑", "gtm.detail", { index: i }, "text"),
-        ]),
-      ),
-      c.raw ? button("完整响应", "gtm.raw", {}, "text") : "",
-    ) +
-    pagination(c.total, 100, c.page)
+    gtm.view(ctx()) +
+    (ctx().tab === "history" ? "" : pagination(ctx().total, 100, ctx().page))
   );
 }
 const features = {
@@ -871,14 +817,20 @@ async function queryResources() {
       c.items = result.result || [];
       c.total = result.result_info?.total_count || c.items.length;
     } else if (page === "gtm") {
+      if (c.tab === "history") {
+        c.gtmHistory = await api("gtm.history", { account_id: c.account });
+        render();
+        return;
+      }
       result = await api(`gtm.${c.tab}`, {
         account_id: c.account,
         page: c.page,
       });
       if (c.serial !== serial) return;
       c.raw = result;
-      c.items = findRows(result);
-      c.total = result.TotalItems || result.TotalCount || c.items.length;
+      c.items = result.items;
+      c.total = result.total;
+      c.gtmDetail = null;
     }
   } catch (error) {
     if (c.serial !== serial) return;
@@ -1034,50 +986,6 @@ function editDns(index, cf) {
       toast("解析记录已保存");
       await queryResources();
     },
-  );
-}
-function editGtm(row) {
-  const c = ctx();
-  const suggestions = {
-    InstanceId: row?.InstanceId || "",
-    ConfigId: row?.ConfigId || "",
-  };
-  if (row?.AddressPoolId) {
-    delete suggestions.InstanceId;
-    delete suggestions.ConfigId;
-    suggestions.AddressPoolId = row.AddressPoolId;
-  }
-  if (row?.AddressId) {
-    delete suggestions.InstanceId;
-    delete suggestions.ConfigId;
-    suggestions.AddressId = row.AddressId;
-  }
-  modal(
-    "GTM 配置管理",
-    "完整保留实例策略、地址池绑定、地址编辑和手动可用状态操作；高级参数使用云 API 原始字段。",
-    `${select(
-      "operation",
-      "操作",
-      Object.entries(gtmOps).map(([value, label]) => ({ value, label })),
-      row?.AddressPoolId
-        ? "UpdateCloudGtmAddressPoolBasicConfig"
-        : row?.AddressId
-          ? "UpdateCloudGtmAddress"
-          : "UpdateCloudGtmInstanceConfigBasic",
-    )}${field("parameters", "操作参数 JSON", JSON.stringify(suggestions, null, 2), "textarea", 'class="code" required')}<div class="notice warn">删除和绑定替换直接修改云端资源。请核对参数后再提交。</div>`,
-    async (data) => {
-      const operation = String(data.get("operation"));
-      const parameters = JSON.parse(String(data.get("parameters")));
-      await api("gtm.action", {
-        account_id: c.account,
-        operation,
-        parameters,
-        confirmation: operation,
-      });
-      toast("GTM 配置已提交");
-      await queryResources();
-    },
-    "确认提交",
   );
 }
 const actions = {
@@ -1302,54 +1210,6 @@ const actions = {
         await queryResources();
       },
     );
-  },
-  "gtm.tab": async (d) => {
-    ctx().tab = d.tab;
-    ctx().page = 1;
-    if (ctx().account) await queryResources();
-    else render();
-  },
-  "gtm.raw": () => showJson("GTM 完整响应", ctx().raw),
-  "gtm.editrow": (d) => editGtm(ctx().items[Number(d.index)]),
-  "gtm.action": () => {
-    if (!ctx().account) throw new Error("请先选择并查询阿里云账号");
-    editGtm();
-  },
-  "gtm.detail": async (d) => {
-    const r = ctx().items[Number(d.index)];
-    if (r.InstanceId && r.ConfigId) {
-      const detail = await api("gtm.detail", {
-        account_id: ctx().account,
-        instance: r.InstanceId,
-        config: r.ConfigId,
-      });
-      modal(
-        "实例完整拓扑",
-        "可以查看完整资源结构，或继续编辑当前实例配置。",
-        field(
-          "details",
-          "完整 JSON",
-          JSON.stringify(detail, null, 2),
-          "textarea",
-          'class="code" readonly',
-        ) + button("编辑该实例", "gtm.editrow", { index: d.index }, "primary"),
-        async () => {},
-        "关闭",
-      );
-    } else
-      modal(
-        "资源详情",
-        "查看当前字段，选择配置管理进行修改。",
-        field(
-          "details",
-          "资源 JSON",
-          JSON.stringify(r, null, 2),
-          "textarea",
-          'class="code" readonly',
-        ) + button("编辑该资源", "gtm.editrow", { index: d.index }, "primary"),
-        async () => {},
-        "关闭",
-      );
   },
   "config.tab": (d) => {
     configTab = d.tab;
@@ -1648,6 +1508,7 @@ function captureTree() {
   r.summary = form.elements.summary.value;
   return r;
 }
+Object.assign(actions, gtm.actions);
 Object.assign(actions, {
   "tree.remove": (d) => {
     const path = JSON.parse(d.path);
@@ -2078,6 +1939,12 @@ document.addEventListener("submit", async (event) => {
     const data = Object.fromEntries(new FormData(form));
     if (formId === "resource-form") {
       const c = ctx();
+      if (route === "gtm" && String(c.account) !== String(data.account_id)) {
+        delete c.gtmCatalog;
+        delete c.gtmOptions;
+        c.gtmDetail = null;
+        c.gtmHistory = [];
+      }
       Object.assign(c, {
         account: data.account_id,
         region: data.region || c.region,

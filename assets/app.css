@@ -1268,3 +1268,138 @@ dialog::backdrop {
   --muted: var(--config-muted);
   --accent: var(--config-action);
 }
+
+/* GTM 3.0 resource workspace */
+.gtm-detail-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.gtm-topology {
+  margin: 24px 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.gtm-topology-root {
+  max-width: 520px;
+  margin: 0 auto 24px;
+}
+.gtm-topology-branches {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 20px;
+  align-items: start;
+}
+.gtm-branch {
+  padding-top: 18px;
+  border-top: 2px solid var(--line);
+  min-width: 0;
+}
+.gtm-branch-addresses {
+  margin-left: 12px;
+  padding-left: 12px;
+  border-left: 2px solid var(--line);
+}
+.gtm-node {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.gtm-node-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.gtm-node .toolbar {
+  margin-top: 10px;
+  gap: 6px;
+}
+.gtm-node-pools {
+  background: var(--accent-soft);
+}
+.gtm-node-addresses,
+.gtm-node-monitors {
+  border-left-color: var(--muted);
+}
+.gtm-reference-list {
+  display: grid;
+  gap: 8px;
+}
+.gtm-reference-list > div {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 0;
+}
+.gtm-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.gtm-fieldset {
+  grid-column: 1 / -1;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin: 14px 0;
+}
+.gtm-fieldset legend {
+  font-weight: 600;
+  padding: 0 8px;
+}
+.gtm-fieldset > .check {
+  display: flex;
+  margin: 8px 0;
+}
+.gtm-repeat {
+  border: 1px solid var(--line);
+  background: var(--bg);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.gtm-repeat-head {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.gtm-values {
+  display: grid;
+  grid-template-columns: minmax(80px, auto) minmax(0, 1fr);
+  gap: 8px 14px;
+  margin: 10px 0;
+  font-size: 13px;
+}
+.gtm-values dt {
+  color: var(--muted);
+}
+.gtm-values dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.gtm-preview-values > * {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 0;
+}
+@media (max-width: 600px) {
+  .gtm-form-grid,
+  .gtm-repeat {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .gtm-topology {
+    padding: 12px;
+  }
+}

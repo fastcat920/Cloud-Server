@@ -90,7 +90,7 @@ final class Api
     }
     private function safe(array $state): array
     {
-        unset($state['admin'],$state['rates'],$state['sequences']);
+        unset($state['admin'],$state['rates'],$state['sequences'],$state['gtm_changes']);
         $state['restore_backups'] = array_map('basename',glob($this->store->directory().'/backups/before-restore-*.php') ?: []);
         rsort($state['restore_backups']);
         foreach ($state['versions'] as &$v) $v['edit_token'] = Checks::token($v);
@@ -124,7 +124,7 @@ final class Api
         $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
         try {
             $write = $method === 'POST';
-            $reads = ['boot','overview','regions','instances','buckets','objects','cf.zones','cf.records','dns.list','gtm.list','gtm.detail','gtm.pools','gtm.addresses','gtm.monitors'];
+            $reads = ['boot','overview','regions','instances','buckets','objects','cf.zones','cf.records','dns.list','gtm.list','gtm.detail','gtm.pools','gtm.addresses','gtm.monitors','gtm.catalog','gtm.options','gtm.resource','gtm.references','gtm.history'];
             if (!$write && !in_array($action, $reads, true)) {
                 throw new ApiError('此操作需要 POST 请求', 405);
             }
@@ -402,7 +402,7 @@ final class Api
                 $result = $this->cloud->rpc($a, $operation, $params, service:'alidns');
                 $this->record($action, $a['name'].'/'.$id);
                 return $result;
-            case 'gtm.list':case 'gtm.detail':case 'gtm.pools':case 'gtm.addresses':case 'gtm.monitors':case 'gtm.action':return $this->gtm($action);
+            case 'gtm.list':case 'gtm.detail':case 'gtm.pools':case 'gtm.addresses':case 'gtm.monitors':case 'gtm.action':case 'gtm.catalog':case 'gtm.options':case 'gtm.resource':case 'gtm.references':case 'gtm.history':case 'gtm.preview':return $this->gtm($action);
             case 'target.save':$id = (int)($this->input['id'] ?? 0);
                 $a = $this->account();
                 if ($a['provider'] === 'cloudflare') {
@@ -604,35 +604,22 @@ final class Api
     }
     private function gtm(string $action): array
     {
-        $a = $this->account();
-        $this->provider($a, 'aliyun');
-        $map = ['gtm.list' => 'ListCloudGtmInstanceConfigs','gtm.detail' => 'DescribeCloudGtmInstanceConfigFullInfo','gtm.pools' => 'ListCloudGtmAddressPools','gtm.addresses' => 'ListCloudGtmAddresses','gtm.monitors' => 'ListCloudGtmMonitorTemplates'];
-        if ($action === 'gtm.action') {
-            $operation = $this->text('operation', 100);
-            $allowed = ['UpdateCloudGtmInstanceConfigBasic','UpdateCloudGtmInstanceConfigLbStrategy','UpdateCloudGtmInstanceConfigEnableStatus','ReplaceCloudGtmInstanceConfigAddressPool','CreateCloudGtmAddressPool','UpdateCloudGtmAddressPoolBasicConfig','UpdateCloudGtmAddressPoolRemark','UpdateCloudGtmAddressPoolEnableStatus','UpdateCloudGtmAddressPoolLbStrategy','DeleteCloudGtmAddressPool','ReplaceCloudGtmAddressPoolAddress','CreateCloudGtmAddress','UpdateCloudGtmAddress','UpdateCloudGtmAddressRemark','UpdateCloudGtmAddressEnableStatus','UpdateCloudGtmAddressManualAvailableStatus','DeleteCloudGtmAddress'];
-            if (!in_array($operation, $allowed, true)) {
-                throw new ApiError('GTM 操作无效');
-            }
-            $this->confirmation($operation);
-            $params = $this->input['parameters'] ?? [];
-            if (!is_array($params)) {
-                throw new ApiError('GTM 参数必须为 JSON 对象');
-            }
-            if (str_starts_with($operation, 'Replace')) {
-                $params['ClientToken'] = bin2hex(random_bytes(16));
-            }
-        } else {
-            $operation = $map[$action];
-            $params = ['PageNumber' => max(1, (int)($this->input['page'] ?? 1)),'PageSize' => 100,'AcceptLanguage' => 'zh-CN'];
-            if ($action === 'gtm.detail') {
-                $params = ['InstanceId' => $this->text('instance', 100),'ConfigId' => $this->text('config', 100)];
-            }
+        $account=$this->account();$this->provider($account,'aliyun');
+        $gtm=new Gtm($this->cloud,$this->store,$this->security);
+        if ($action==='gtm.catalog') return Gtm::catalog();
+        if ($action==='gtm.options') return $gtm->options($account);
+        if ($action==='gtm.history') return array_values(array_reverse(array_filter($this->store->read()['gtm_changes'] ?? [],fn ($row)=>$row['account_id']===$account['id'])));
+        if ($action==='gtm.action') return $gtm->apply($account,$this->text('ticket',1000000));
+        if ($action==='gtm.preview') {
+            $parameters=$this->input['parameters'] ?? null;
+            if (!is_array($parameters)) throw new ApiError('GTM 参数无效');
+            return $gtm->preview($account,$this->text('operation',100),$parameters,$this->text('expected_token',100,false) ?: null);
         }
-        $result = $this->cloud->rpc($a, $operation, $params, service:'alidns');
-        if ($action === 'gtm.action') {
-            $this->record($operation, $a['name']);
-        }
-        return $result;
+        $kind=$this->text('kind',30,false) ?: 'list';
+        if ($action==='gtm.resource' || $action==='gtm.detail') return $gtm->detail($account,$kind,$this->text('resource',100,false) ?: $this->text('config',100));
+        if ($action==='gtm.references') return $gtm->references($account,$kind,$this->text('resource',100));
+        $kind=match($action) {'gtm.list'=>'list','gtm.pools'=>'pools','gtm.addresses'=>'addresses','gtm.monitors'=>'monitors',default=>throw new ApiError('GTM 接口无效')};
+        return $gtm->listing($account,$kind,max(1,(int)($this->input['page'] ?? 1)));
     }
     private function saveVersion(): int
     {
@@ -740,6 +727,7 @@ final class Api
         // Re-encrypt using the installation key; never replace the key before a state commit.
         $source = new Security($backup['key']);
         $data = $backup['state'];
+        $data['gtm_changes'] ??= [];
         foreach (['accounts','targets','versions','publications','settings','events'] as $table) {
             if (!isset($data[$table]) || !is_array($data[$table])) {
                 throw new ApiError('备份缺少数据表：'.$table);
@@ -780,7 +768,7 @@ final class Api
             if (!isset($data['plans'],$data['templates'])) {
                 unset($s['plans'],$s['templates']);
             }
-            foreach (['accounts','targets','versions','publications','settings','events','sequences','plans','templates'] as $table) {
+            foreach (['accounts','targets','versions','publications','settings','events','sequences','plans','templates','gtm_changes'] as $table) {
                 if (isset($data[$table])) {
                     $s[$table] = $data[$table];
                 }

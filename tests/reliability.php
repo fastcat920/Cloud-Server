@@ -1,7 +1,7 @@
 <?php
 
 declare(strict_types=1);
-foreach (['Store','Security','Cloud','Objects','Configs','Plans','Checks','Releases','Importer','Api'] as $name) require __DIR__.'/../_core/'.$name.'.php';
+foreach (['Store','Security','Cloud','Objects','Configs','Plans','Checks','Releases','Gtm','Importer','Api'] as $name) require __DIR__.'/../_core/'.$name.'.php';
 use CloudDesk\{Store,Security,Cloud,Http,Objects,Configs,Plans,Checks,Releases,ApiError};
 function ensure(bool $ok,string $why): void { if (!$ok) throw new RuntimeException($why); }
 $directory=sys_get_temp_dir().'/cloud-reliable-'.bin2hex(random_bytes(8));
