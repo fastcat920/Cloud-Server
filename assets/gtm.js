@@ -39,8 +39,8 @@ const enums = {
   non_preemptive: "非抢占：保持当前资源",
   auto: "按健康检查自动切换",
   manual: "人工指定状态",
-  available: "正常 / 可用",
-  unavailable: "异常 / 不可用",
+  available: "可用",
+  unavailable: "不可用",
   custom: "自定义托管域名",
   prepay: "绑定已购实例",
 };
@@ -67,7 +67,7 @@ export function gtmName(row = {}) {
   );
 }
 const stateBadge = (r) =>
-  `${badge(enums[r.EnableStatus] || r.Protocol || "—", r.EnableStatus === "enable" ? "good" : "")}${r.HealthStatus ? badge({ ok: "健康", ok_alert: "部分异常", ok_no_monitor: "未探测", exceptional: "异常" }[r.HealthStatus] || r.HealthStatus, r.HealthStatus === "exceptional" ? "bad" : "") : ""}${r.AvailableStatus ? badge(enums[r.AvailableStatus] || r.AvailableStatus, r.AvailableStatus === "unavailable" ? "bad" : "good") : ""}`;
+  `${badge(enums[r.EnableStatus] || r.Protocol || "—", r.EnableStatus === "enable" ? "good" : "")}${r.HealthStatus ? badge({ ok: "健康", ok_alert: "异常", ok_no_monitor: "未探测", exceptional: "异常" }[r.HealthStatus] || r.HealthStatus, r.HealthStatus === "exceptional" ? "bad" : "") : ""}${r.AvailableStatus ? badge(enums[r.AvailableStatus] || r.AvailableStatus, r.AvailableStatus === "unavailable" ? "bad" : "good") : ""}`;
 const openButton = (kind, row, label = "配置") =>
   button(label, "gtm.open", { kind, id: row[ids[kind]] }, "text");
 export function normalizeGtm(resource) {
