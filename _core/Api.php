@@ -606,24 +606,30 @@ final class Api
     {
         $account=$this->account();$this->provider($account,'aliyun');
         $gtm=new Gtm($this->cloud,$this->store,$this->security);
-        if ($action==='gtm.catalog') return Gtm::catalog();
-        if ($action==='gtm.options') return $gtm->options($account,$this->text('operation',100,false) ?: null,($this->input['unified'] ?? '')==='true',$this->text('section',30,false) ?: null);
-        if ($action==='gtm.history') return array_values(array_reverse(array_filter($this->store->read()['gtm_changes'] ?? [],fn ($row)=>$row['account_id']===$account['id'])));
-        if ($action==='gtm.action') return $gtm->apply($account,$this->text('ticket',1000000));
-        if ($action==='gtm.preview') {
-            if (isset($this->input['steps'])) {
-                if (!is_array($this->input['steps'])) throw new ApiError('变更步骤无效');
-                return $gtm->previewBatch($account,$this->input['steps'],$this->text('expected_token',100,false) ?: null);
+        $started=hrtime(true);
+        try {
+            if ($action==='gtm.catalog') return Gtm::catalog();
+            if ($action==='gtm.options') return $gtm->options($account,$this->text('operation',100,false) ?: null,($this->input['unified'] ?? '')==='true',$this->text('section',30,false) ?: null);
+            if ($action==='gtm.history') return array_values(array_reverse(array_filter($this->store->read()['gtm_changes'] ?? [],fn ($row)=>$row['account_id']===$account['id'])));
+            if ($action==='gtm.action') return $gtm->apply($account,$this->text('ticket',1000000));
+            if ($action==='gtm.preview') {
+                if (isset($this->input['steps'])) {
+                    if (!is_array($this->input['steps'])) throw new ApiError('变更步骤无效');
+                    return $gtm->previewBatch($account,$this->input['steps'],$this->text('expected_token',100,false) ?: null);
+                }
+                $parameters=$this->input['parameters'] ?? null;
+                if (!is_array($parameters)) throw new ApiError('GTM 参数无效');
+                return $gtm->preview($account,$this->text('operation',100),$parameters,$this->text('expected_token',100,false) ?: null);
             }
-            $parameters=$this->input['parameters'] ?? null;
-            if (!is_array($parameters)) throw new ApiError('GTM 参数无效');
-            return $gtm->preview($account,$this->text('operation',100),$parameters,$this->text('expected_token',100,false) ?: null);
+            $kind=$this->text('kind',30,false) ?: 'list';
+            if ($action==='gtm.resource' || $action==='gtm.detail') return $gtm->detail($account,$kind,$this->text('resource',100,false) ?: $this->text('config',100),$this->text('instance_id',100,false));
+            if ($action==='gtm.references') return $gtm->references($account,$kind,$this->text('resource',100));
+            $kind=match($action) {'gtm.list'=>'list','gtm.pools'=>'pools','gtm.addresses'=>'addresses','gtm.monitors'=>'monitors',default=>throw new ApiError('GTM 接口无效')};
+            return $gtm->listing($account,$kind,max(1,(int)($this->input['page'] ?? 1)));
+        } finally {
+            $metrics=$gtm->metrics();
+            header(sprintf('Server-Timing: gtm;dur=%.2f, cloud;dur=%.2f;desc="%d calls"',(hrtime(true)-$started)/1000000,$metrics['cloud_ms'],$metrics['cloud_calls']));
         }
-        $kind=$this->text('kind',30,false) ?: 'list';
-        if ($action==='gtm.resource' || $action==='gtm.detail') return $gtm->detail($account,$kind,$this->text('resource',100,false) ?: $this->text('config',100),$this->text('instance_id',100,false));
-        if ($action==='gtm.references') return $gtm->references($account,$kind,$this->text('resource',100));
-        $kind=match($action) {'gtm.list'=>'list','gtm.pools'=>'pools','gtm.addresses'=>'addresses','gtm.monitors'=>'monitors',default=>throw new ApiError('GTM 接口无效')};
-        return $gtm->listing($account,$kind,max(1,(int)($this->input['page'] ?? 1)));
     }
     private function saveVersion(): int
     {

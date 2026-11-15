@@ -17,5 +17,7 @@ jobs:
         run: php tests/unit.php && php tests/default-template.php && php tests/reliability.php && php tests/gtm.php && php tests/gtm-isolation.php
       - name: Isolated HTTP integration tests
         run: PHP_BINARY=php python3 tests/integration.py
+      - name: HTTPS connection reuse tests
+        run: PHP_BINARY=php python3 tests/http-reuse.py
       - name: Same-directory deployment and update tests
         run: python3 tests/deployment.py

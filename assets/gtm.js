@@ -233,6 +233,45 @@ export function gtmChanges(before, parameters, fields = {}, deleting = false) {
     if (!identifiers.has(key)) walk(before[key], value, key, fields[key]);
   return result;
 }
+export function gtmUpdateParameters(fields, before, parameters) {
+  const identities = new Set([
+    "ConfigId",
+    "InstanceId",
+    "AddressPoolId",
+    "AddressId",
+    "TemplateId",
+  ]);
+  const patch = Object.fromEntries(
+    Object.entries(fields)
+      .filter(
+        ([key, spec]) =>
+          Object.hasOwn(parameters, key) &&
+          (identities.has(key) ||
+            spec.required ||
+            gtmChanges(
+              { [key]: before[key] },
+              { [key]: parameters[key] },
+              { [key]: spec },
+            ).length),
+      )
+      .map(([key]) => [key, parameters[key]]),
+  );
+  if (
+    patch.AvailableMode === "manual" &&
+    fields.ManualAvailableStatus &&
+    Object.hasOwn(parameters, "ManualAvailableStatus")
+  )
+    patch.ManualAvailableStatus = parameters.ManualAvailableStatus;
+  if (
+    [patch.AddressPoolLbStrategy, patch.AddressLbStrategy].includes(
+      "sequence",
+    ) &&
+    fields.SequenceLbStrategyMode &&
+    Object.hasOwn(parameters, "SequenceLbStrategyMode")
+  )
+    patch.SequenceLbStrategyMode = parameters.SequenceLbStrategyMode;
+  return patch;
+}
 export function gtmStatus(row) {
   if (
     row.HealthStatus === "exceptional" ||
@@ -332,8 +371,95 @@ if (typeof document !== "undefined")
   });
 export function createGtm({ api, ctx, render, queryResources }) {
   let editor = null,
+    opening = null,
     session = 0;
   let nameIndex = null;
+  const detailCache = new Map();
+  const detailKey = (kind, id) =>
+    `${ctx().account}:${ctx().serial || 0}:${kind}:${id}`;
+  function rememberDetail(kind, id, detail) {
+    detailCache.set(detailKey(kind, id), {
+      time: Date.now(),
+      pending: false,
+      promise: Promise.resolve(detail),
+    });
+    while (detailCache.size > 64)
+      detailCache.delete(detailCache.keys().next().value);
+  }
+  function updateListedResource(detail) {
+    const c = ctx(),
+      field = ids[detail.kind];
+    if ((c.tab || "list") === detail.kind && field)
+      c.items = c.items.map((row) =>
+        row[field] === detail.resource[field]
+          ? { ...row, ...detail.resource }
+          : row,
+      );
+  }
+  async function resourceDetail(
+    kind,
+    id,
+    { fresh = false, background = false, instance } = {},
+  ) {
+    const key = detailKey(kind, id),
+      cached = detailCache.get(key);
+    if (
+      !fresh &&
+      cached &&
+      (cached.pending || Date.now() - cached.time < 15000)
+    )
+      return structuredClone(await cached.promise);
+    const entry = { time: Date.now(), pending: true };
+    entry.promise = api(
+      "gtm.resource",
+      { account_id: ctx().account, kind, resource: id, instance_id: instance },
+      { background },
+    );
+    detailCache.set(key, entry);
+    while (detailCache.size > 64)
+      detailCache.delete(detailCache.keys().next().value);
+    try {
+      const detail = await entry.promise;
+      entry.pending = false;
+      entry.time = Date.now();
+      return structuredClone(detail);
+    } catch (error) {
+      if (detailCache.get(key) === entry) detailCache.delete(key);
+      throw error;
+    }
+  }
+  let hoverTimer,
+    prefetching = 0,
+    warmedList = null;
+  function warmDetail(kind, id, instance) {
+    if (prefetching >= 2) return;
+    ++prefetching;
+    resourceDetail(kind, id, { background: true, instance })
+      .catch(() => {})
+      .finally(() => --prefetching);
+  }
+  document.addEventListener("pointerover", (event) => {
+    const node = event.target.closest?.(
+      '[data-action="gtm.edit"], [data-action="gtm.open"]',
+    );
+    if (!node || !node.dataset.id || node.contains(event.relatedTarget)) return;
+    clearTimeout(hoverTimer);
+    const account = ctx().account;
+    hoverTimer = setTimeout(() => {
+      if (node.isConnected && ctx().account === account)
+        warmDetail(
+          node.dataset.kind,
+          node.dataset.id,
+          knownResources().get(node.dataset.id)?.InstanceId,
+        );
+    }, 150);
+  });
+  document.addEventListener("pointerout", (event) => {
+    const node = event.target.closest?.(
+      '[data-action="gtm.edit"], [data-action="gtm.open"]',
+    );
+    if (node && !node.contains(event.relatedTarget)) clearTimeout(hoverTimer);
+  });
   async function catalog() {
     const c = ctx();
     c.gtmCatalog ??= await api("gtm.catalog", { account_id: c.account });
@@ -820,9 +946,12 @@ export function createGtm({ api, ctx, render, queryResources }) {
         }
       : null;
     const active =
-      keepPosition && oldBox.contains(document.activeElement)
+      keepPosition &&
+      oldBox.dataset.loading !== "1" &&
+      oldBox.contains(document.activeElement)
         ? document.activeElement
         : null;
+    const wasLoading = oldBox?.dataset.loading === "1";
     const activeName = active?.name;
     const selection =
       active && ["text", "textarea", "search"].includes(active.type)
@@ -895,10 +1024,10 @@ export function createGtm({ api, ctx, render, queryResources }) {
         const steps = editor.operations
           .filter(([, op]) => !op.delete)
           .map(([operation, op]) => {
-            const parametersForOperation = Object.fromEntries(
-              Object.keys(op.fields)
-                .filter((key) => Object.hasOwn(parameters, key))
-                .map((key) => [key, parameters[key]]),
+            const parametersForOperation = gtmUpdateParameters(
+              op.fields,
+              editor.baseline,
+              parameters,
             );
             return {
               operation,
@@ -913,13 +1042,19 @@ export function createGtm({ api, ctx, render, queryResources }) {
           .filter((step) => step.changes.length)
           .map(({ operation, parameters }) => ({ operation, parameters }));
         if (!steps.length) throw new Error("没有修改内容，无需提交");
-        request = { steps };
+        request = steps.length === 1 ? steps[0] : { steps };
       }
-      const preview = await api("gtm.preview", {
-        account_id: editor.account,
-        expected_token: editor.token,
-        ...request,
-      });
+      let preview;
+      try {
+        preview = await api("gtm.preview", {
+          account_id: editor.account,
+          expected_token: editor.token,
+          ...request,
+        });
+      } catch (error) {
+        detailCache.clear();
+        throw error;
+      }
       const savedEditor = editor;
       setTimeout(() => {
         if (editor?.session !== currentSession) return;
@@ -942,6 +1077,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
           ) +
             `<div class="toolbar">${button("返回编辑", "gtm.back", {}, "text")}</div>`,
           async () => {
+            detailCache.clear();
             const result = await api("gtm.action", {
               account_id: savedEditor.account,
               ticket: preview.ticket,
@@ -959,24 +1095,55 @@ export function createGtm({ api, ctx, render, queryResources }) {
             const root = savedEditor.root;
             document.querySelector("#gtm-drawer")?.close();
             editor = null;
-            c.gtmDetail = null;
-            await queryResources();
-            if (!root) restoreListPosition(savedEditor.returnTo);
+            detailCache.clear();
             if (
+              !result.partial &&
+              result.verification === "confirmed" &&
+              result.resource &&
+              result.token
+            )
+              rememberDetail(result.kind, result.resource_id, {
+                kind: result.kind,
+                resource: result.resource,
+                token: result.token,
+              });
+            const removedRoot =
               root &&
-              !(
-                savedEditor.spec.delete &&
-                root.kind === savedEditor.spec.kind &&
-                root.id === result.resource_id
+              savedEditor.spec.delete &&
+              root.kind === savedEditor.spec.kind &&
+              root.id === result.resource_id;
+            if (root && !removedRoot) {
+              if (
+                !result.partial &&
+                result.verification === "confirmed" &&
+                result.kind === root.kind &&
+                result.resource_id === root.id &&
+                result.token
+              ) {
+                c.gtmDetail = {
+                  kind: root.kind,
+                  resource: result.resource,
+                  token: result.token,
+                };
+                updateListedResource(c.gtmDetail);
+                render();
+              } else await open(root.kind, root.id, true);
+            } else {
+              c.gtmDetail = null;
+              await queryResources();
+              if (
+                !result.partial &&
+                result.verification === "confirmed" &&
+                result.resource &&
+                result.token
               )
-            )
-              await open(root.kind, root.id);
-            else if (
-              result.resource_id &&
-              !savedEditor.spec.delete &&
-              savedEditor.spec.kind === "list"
-            )
-              await open(savedEditor.spec.kind, result.resource_id);
+                rememberDetail(result.kind, result.resource_id, {
+                  kind: result.kind,
+                  resource: result.resource,
+                  token: result.token,
+                });
+              restoreListPosition(savedEditor.returnTo);
+            }
             if (savedEditor.attach && result.resource_id) {
               const parent = savedEditor.attach;
               await edit(
@@ -1012,6 +1179,16 @@ export function createGtm({ api, ctx, render, queryResources }) {
         );
       }, 0);
     };
+    document
+      .querySelectorAll(".gtm-node[data-id]")
+      .forEach((node) =>
+        node.classList.toggle(
+          "selected",
+          node.dataset.kind === editor.spec.kind &&
+            node.dataset.id === editor.resource[ids[editor.spec.kind]],
+        ),
+      );
+    delete box.dataset.loading;
     box.dataset.session = String(currentSession);
     const form = document.querySelector("#gtm-editor-form");
     form.addEventListener("submit", async (event) => {
@@ -1137,6 +1314,40 @@ export function createGtm({ api, ctx, render, queryResources }) {
       restore();
       requestAnimationFrame(restore);
     }
+    mountDrawer();
+    if (wasLoading)
+      form
+        .querySelector("input:not([readonly]),textarea,select")
+        ?.focus({ preventScroll: true });
+  }
+  function showOpening() {
+    const old = document.querySelector("#gtm-inspector");
+    if (old) {
+      const template = document.createElement("div");
+      template.innerHTML = inspectorShell();
+      old.replaceWith(template.querySelector("#gtm-inspector"));
+    } else if (ctx().gtmDetail) {
+      const workspace = document.querySelector(".gtm-workspace");
+      workspace.classList.add("editing");
+      workspace.insertAdjacentHTML("beforeend", inspectorShell());
+    } else
+      document
+        .querySelector(".gtm-page")
+        .insertAdjacentHTML("beforeend", inspectorShell());
+    document
+      .querySelectorAll(".gtm-node[data-id]")
+      .forEach((node) =>
+        node.classList.toggle(
+          "selected",
+          node.dataset.kind === opening.kind && node.dataset.id === opening.id,
+        ),
+      );
+    mountDrawer();
+    document
+      .querySelector('#gtm-inspector [data-action="gtm.inspector.close"]')
+      ?.focus({ preventScroll: true });
+  }
+  function mountDrawer() {
     const drawer = document.querySelector("#gtm-drawer");
     if (drawer && !drawer.open) {
       drawer.addEventListener("cancel", (event) => {
@@ -1155,10 +1366,12 @@ export function createGtm({ api, ctx, render, queryResources }) {
           actions["gtm.inspector.close"]();
       });
       drawer.showModal();
-      form
-        .querySelector("input:not([readonly]), textarea, select")
+      document
+        .querySelector(
+          "#gtm-inspector input:not([readonly]), #gtm-inspector textarea, #gtm-inspector select",
+        )
         ?.focus({ preventScroll: true });
-      restoreListPosition(editor.returnTo, false);
+      restoreListPosition(editor?.returnTo || opening?.returnTo, false);
     }
   }
   function formatValue(value) {
@@ -1193,116 +1406,137 @@ export function createGtm({ api, ctx, render, queryResources }) {
       ? editor?.returnTo || { x: window.scrollX, y: window.scrollY, kind, id }
       : null;
     if (!c.account) throw new Error("请先选择阿里云账号");
-    const allOperations = await catalog();
-    const sourceOp = allOperations[operation];
-    const operations = Object.entries(allOperations).filter(
-      ([, spec]) => spec.kind === kind && !spec.create,
-    );
-    const op =
-      sourceOp && !sourceOp.create && !sourceOp.delete
-        ? {
-            ...sourceOp,
-            fields: Object.assign(
-              {},
-              ...operations
-                .filter(([, spec]) => !spec.delete)
-                .map(([, spec]) => spec.fields),
-            ),
-          }
-        : sourceOp;
-    if (!op) throw new Error("不支持此操作");
-    const known = knownResources().get(id);
-    const detail = op.create
-      ? { resource: {}, token: null }
-      : await api("gtm.resource", {
-          account_id: selectedAccount,
-          kind: op.kind,
-          resource: id,
-          instance_id: known?.InstanceId,
-        });
-    const resource = normalizeGtm(detail.resource),
-      opts = { errors: {} };
-    if (requested !== session || selectedAccount !== ctx().account) return;
-    editor = {
-      session: requested,
-      returnTo,
-      attach,
-      root: c.gtmDetail
-        ? {
-            kind: c.gtmDetail.kind,
-            id: c.gtmDetail.resource[ids[c.gtmDetail.kind]],
-          }
-        : null,
-      account: c.account,
-      operation,
-      operations,
-      spec: op,
-      resource,
-      token: detail.token,
-      references: [],
-      options: opts,
-      values: initial(op.fields, resource, op.create),
-    };
-    if (op.fields.ExtendInfo)
-      editor.values.ExtendInfo =
-        resource.ExtendInfo ||
-        ((editor.values.Protocol || resource.Protocol) === "ping"
-          ? { packetNum: 20, packetLossRate: 30 }
-          : { path: "/", code: 500, sni: true, followRedirect: false });
-    if (attach?.parenttype && op.create) {
-      if (op.kind === "addresses") editor.values.Type = attach.parenttype;
-      if (op.kind === "pools")
-        editor.values.AddressPoolType =
-          attach.parenttype === "AAAA"
-            ? "IPv6"
-            : attach.parenttype === "CNAME"
-              ? "domain"
-              : "IPv4";
+    const knownName = displayName(knownResources().get(id));
+    editor = null;
+    opening = { session: requested, kind, id, name: knownName, returnTo };
+    showOpening();
+    try {
+      const allOperations = await catalog();
+      if (requested !== session || selectedAccount !== ctx().account) return;
+      const sourceOp = allOperations[operation];
+      const operations = Object.entries(allOperations).filter(
+        ([, spec]) => spec.kind === kind && !spec.create,
+      );
+      const op =
+        sourceOp && !sourceOp.create && !sourceOp.delete
+          ? {
+              ...sourceOp,
+              fields: Object.assign(
+                {},
+                ...operations
+                  .filter(([, spec]) => !spec.delete)
+                  .map(([, spec]) => spec.fields),
+              ),
+            }
+          : sourceOp;
+      if (!op) throw new Error("不支持此操作");
+      const known = knownResources().get(id);
+      const detail = op.create
+        ? { resource: {}, token: null }
+        : await resourceDetail(op.kind, id, { instance: known?.InstanceId });
+      const resource = normalizeGtm(detail.resource),
+        opts = { errors: {} };
+      if (requested !== session || selectedAccount !== ctx().account) return;
+      opening = null;
+      editor = {
+        session: requested,
+        returnTo,
+        attach,
+        root: c.gtmDetail
+          ? {
+              kind: c.gtmDetail.kind,
+              id: c.gtmDetail.resource[ids[c.gtmDetail.kind]],
+            }
+          : null,
+        account: c.account,
+        operation,
+        operations,
+        spec: op,
+        resource,
+        token: detail.token,
+        references: [],
+        options: opts,
+        values: initial(op.fields, resource, op.create),
+      };
+      if (op.fields.ExtendInfo)
+        editor.values.ExtendInfo =
+          resource.ExtendInfo ||
+          ((editor.values.Protocol || resource.Protocol) === "ping"
+            ? { packetNum: 20, packetLossRate: 30 }
+            : { path: "/", code: 500, sni: true, followRedirect: false });
+      if (attach?.parenttype && op.create) {
+        if (op.kind === "addresses") editor.values.Type = attach.parenttype;
+        if (op.kind === "pools")
+          editor.values.AddressPoolType =
+            attach.parenttype === "AAAA"
+              ? "IPv6"
+              : attach.parenttype === "CNAME"
+                ? "domain"
+                : "IPv4";
+      }
+      editor.baseline = structuredClone(editor.values);
+      drawEditor();
+      // Only monitor forms need auxiliary data without an explicit user interaction.
+      if (op.fields.IspCityNodes)
+        loadOptions("nodes")
+          .then(() => {
+            if (editor?.session !== requested) return;
+            const form = document.querySelector("#gtm-editor-form");
+            editor.values = collect(form);
+            const container = document.createElement("div");
+            container.innerHTML = controls(
+              { IspCityNodes: editor.spec.fields.IspCityNodes },
+              editor.values,
+            );
+            form
+              .querySelector("[data-gtm-nodes]")
+              ?.replaceWith(container.firstElementChild);
+          })
+          .catch((error) => {
+            if (editor?.session === requested)
+              document.querySelector("#gtm-aux-status").textContent =
+                error.message;
+          });
+    } catch (error) {
+      if (session === requested) {
+        actions["gtm.inspector.close"]();
+        restoreListPosition(returnTo);
+      }
+      throw error;
     }
-    editor.baseline = structuredClone(editor.values);
-    drawEditor();
-    // Only monitor forms need auxiliary data without an explicit user interaction.
-    if (op.fields.IspCityNodes)
-      loadOptions("nodes")
-        .then(() => {
-          if (editor?.session !== requested) return;
-          const form = document.querySelector("#gtm-editor-form");
-          editor.values = collect(form);
-          const container = document.createElement("div");
-          container.innerHTML = controls(
-            { IspCityNodes: editor.spec.fields.IspCityNodes },
-            editor.values,
-          );
-          form
-            .querySelector("[data-gtm-nodes]")
-            ?.replaceWith(container.firstElementChild);
-        })
-        .catch((error) => {
-          if (editor?.session === requested)
-            document.querySelector("#gtm-aux-status").textContent =
-              error.message;
-        });
   }
-  async function open(kind, id) {
+  async function open(kind, id, fresh = false) {
     if (!mayDiscard()) return;
     editor = null;
+    opening = null;
     ++session;
     const c = ctx(),
       account = c.account;
     const requested = session,
       known = knownResources().get(id);
-    const [detail] = await Promise.all([
-      api("gtm.resource", {
-        account_id: account,
-        kind,
-        resource: id,
-        instance_id: known?.InstanceId,
-      }),
-      catalog(),
-    ]);
-    if (c.account !== account || session !== requested) return;
-    c.gtmDetail = detail;
-    render();
+    document.querySelector("#gtm-drawer")?.close();
+    document.querySelector("#gtm-drawer")?.remove();
+    document.querySelector("#gtm-inspector")?.remove();
+    document.querySelector(".gtm-workspace")?.classList.remove("editing");
+    document.querySelector("#gtm-canvas-loading")?.remove();
+    const notice = document.createElement("p");
+    notice.id = "gtm-canvas-loading";
+    notice.className = "notice";
+    notice.setAttribute("role", "status");
+    notice.textContent = "正在读取云端画布…";
+    document.querySelector(".gtm-page")?.prepend(notice);
+    try {
+      const [detail] = await Promise.all([
+        resourceDetail(kind, id, { fresh, instance: known?.InstanceId }),
+        catalog(),
+      ]);
+      if (c.account !== account || session !== requested) return;
+      c.gtmDetail = detail;
+      updateListedResource(detail);
+      render();
+    } finally {
+      notice.remove();
+    }
   }
   function restoreListPosition(position, focus = true) {
     if (!position) return;
@@ -1319,9 +1553,11 @@ export function createGtm({ api, ctx, render, queryResources }) {
     requestAnimationFrame(restore);
   }
   function inspectorShell() {
-    if (!editor) return "";
-    const content =
-      '<aside class="gtm-inspector" id="gtm-inspector" aria-label="GTM 参数编辑"></aside>';
+    if (!editor && !opening) return "";
+    const loading = opening
+      ? `<div class="gtm-loading"><header class="gtm-inspector-head"><div><small>${e(kinds[opening.kind])}</small><h3 id="gtm-editor-title">${e(opening.name)}</h3></div>${button("×", "gtm.inspector.close", {}, "icon-only")}</header><div class="gtm-inspector-body" role="status">正在读取云端配置…</div><footer class="gtm-inspector-foot">${button("关闭", "gtm.inspector.close")}</footer></div>`
+      : "";
+    const content = `<aside class="gtm-inspector" id="gtm-inspector" aria-label="GTM 参数编辑" ${opening ? `data-session="${opening.session}" data-loading="1"` : ""}>${loading}</aside>`;
     return ctx().gtmDetail
       ? content
       : `<dialog class="gtm-drawer" id="gtm-drawer" aria-labelledby="gtm-editor-title">${content}</dialog>`;
@@ -1362,11 +1598,31 @@ export function createGtm({ api, ctx, render, queryResources }) {
     else if (kind === "addresses")
       graph = `<div class="gtm-address-grid">${card("addresses", resource)}</div>`;
     else graph = card("monitors", resource);
-    return `<section class="gtm-workbench"><header class="gtm-workbench-head"><div class="toolbar">${button("返回列表", "gtm.close", {}, "text")}<strong>${e(gtmName(resource))}</strong>${badge("GTM 3.0")}</div><div class="toolbar">${button("刷新画布", "gtm.canvas.refresh", {}, "text")}${button("新建地址池", "gtm.create", { kind: "pools" }, "text", "plus")}${button("新建地址", "gtm.create", { kind: "addresses" }, "text", "plus")}</div></header><div class="gtm-workspace ${editor ? "editing" : ""}"><div class="gtm-canvas" aria-label="GTM 关联画布"><div class="gtm-canvas-hint">点击节点直接编辑 · 管理关联可增删、排序 · 修改后预览确认</div><div class="gtm-graph gtm-graph-${kind}">${graph}</div></div>${inspectorShell()}</div></section>`;
+    return `<section class="gtm-workbench"><header class="gtm-workbench-head"><div class="toolbar">${button("返回列表", "gtm.close", {}, "text")}<strong>${e(gtmName(resource))}</strong>${badge("GTM 3.0")}</div><div class="toolbar">${button("刷新画布", "gtm.canvas.refresh", {}, "text")}${button("新建地址池", "gtm.create", { kind: "pools" }, "text", "plus")}${button("新建地址", "gtm.create", { kind: "addresses" }, "text", "plus")}</div></header><div class="gtm-workspace ${editor || opening ? "editing" : ""}"><div class="gtm-canvas" aria-label="GTM 关联画布"><div class="gtm-canvas-hint">点击节点直接编辑 · 管理关联可增删、排序 · 修改后预览确认</div><div class="gtm-graph gtm-graph-${kind}">${graph}</div></div>${inspectorShell()}</div></section>`;
   }
   function view(c) {
     nameIndex = null;
     const tab = c.tab in kinds ? c.tab : "list";
+    if (
+      tab === "list" &&
+      !c.gtmDetail &&
+      !editor &&
+      c.items?.length &&
+      warmedList !== c.items
+    ) {
+      const items = c.items,
+        account = c.account;
+      warmedList = items;
+      setTimeout(() => {
+        if (
+          ctx().items === items &&
+          ctx().account === account &&
+          !ctx().gtmDetail &&
+          !editor
+        )
+          warmDetail("list", items[0].ConfigId, items[0].InstanceId);
+      }, 200);
+    }
     const tabs = `<div class="tabs">${Object.entries({
       ...kinds,
       history: "变更记录",
@@ -1458,6 +1714,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
       if (!mayDiscard()) return;
       ++session;
       editor = null;
+      opening = null;
       const c = ctx();
       c.tab = d.tab;
       c.page = 1;
@@ -1499,6 +1756,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
       if (!mayDiscard()) return;
       ++session;
       editor = null;
+      opening = null;
       ctx().gtmDetail = null;
       render();
     },
@@ -1523,15 +1781,25 @@ export function createGtm({ api, ctx, render, queryResources }) {
     "gtm.inspector.close": () => {
       if (!mayDiscard()) return;
       ++session;
-      const position = editor?.returnTo;
-      document.querySelector("#gtm-drawer")?.close();
+      const position = editor?.returnTo || opening?.returnTo;
+      const drawer = document.querySelector("#gtm-drawer");
+      drawer?.close();
       editor = null;
-      render();
+      opening = null;
+      if (drawer) drawer.remove();
+      else {
+        document.querySelector("#gtm-inspector")?.remove();
+        document.querySelector(".gtm-workspace")?.classList.remove("editing");
+        document
+          .querySelectorAll(".gtm-node.selected")
+          .forEach((node) => node.classList.remove("selected"));
+      }
       restoreListPosition(position);
     },
     "gtm.canvas.refresh": () => {
       const detail = ctx().gtmDetail;
-      return open(detail.kind, detail.resource[ids[detail.kind]]);
+      detailCache.clear();
+      return open(detail.kind, detail.resource[ids[detail.kind]], true);
     },
     "gtm.row.add": (d) => {
       editor.values = collect(document.querySelector("#gtm-editor-form"));
@@ -1582,6 +1850,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
       if (!mayDiscard()) return false;
       ++session;
       editor = null;
+      opening = null;
       return true;
     },
   };

@@ -13,6 +13,17 @@ final class Gtm
         'instances'=>['ListCloudGtmInstances','Instances','Instance'],
     ];
     private array $instanceIds = [];
+    private ?array $previewCache = null;
+    private float $cloudMs = 0;
+    private int $cloudCalls = 0;
+    public function metrics(): array { return ['cloud_ms'=>$this->cloudMs,'cloud_calls'=>$this->cloudCalls]; }
+    private function previewReads(callable $callback): array
+    {
+        if ($this->previewCache!==null) return $callback();
+        $this->previewCache=[];
+        try { return $callback(); } finally { $this->previewCache=null; }
+    }
+    private function cacheKey(array $account,string $kind,string $id): string { return hash('sha256',json_encode([$account['id'],$account['credentials'],$kind,$id],JSON_THROW_ON_ERROR)); }
     public function __construct(private Cloud $cloud, private Store $store, private Security $security) {}
     public static function catalog(): array { static $catalog; return $catalog ??= json_decode(file_get_contents(__DIR__.'/gtm-operations.json'),true,64,JSON_THROW_ON_ERROR); }
     private function call(array $account,string $operation,array $params=[]): array
@@ -30,7 +41,9 @@ final class Gtm
         $read=!isset(self::catalog()[$operation]);
         for($attempt=0;$attempt<($read?2:1);$attempt++) {
             try {
-                return $this->cloud->rpc($account,$operation,['AcceptLanguage'=>'zh-CN']+$params,service:'alidns',method:$read?'GET':'POST',timeout:$read?15:60);
+                $started=hrtime(true);++$this->cloudCalls;
+                try { return $this->cloud->rpc($account,$operation,['AcceptLanguage'=>'zh-CN']+$params,service:'alidns',method:$read?'GET':'POST',timeout:$read?15:60,reuse:true); }
+                finally { $this->cloudMs+=(hrtime(true)-$started)/1000000; }
             } catch (\RuntimeException $error) {
                 if ($read && $attempt===0 && (str_contains($error->getMessage(),'28') || preg_match('/HTTP 50[234]/',$error->getMessage()))) continue;
                 throw new \RuntimeException('GTM '.$operation.'：'.$error->getMessage(),0,$error);
@@ -71,11 +84,23 @@ final class Gtm
     {
         $map=self::KINDS[$kind] ?? throw new ApiError('GTM 资源类型无效');
         if (!isset($map[3]) || $id==='') throw new ApiError('缺少 GTM 资源 ID');
+        $cacheKey='detail:'.$this->cacheKey($account,$kind,$id);
+        if (isset($this->previewCache[$cacheKey])) return $this->previewCache[$cacheKey];
         $resource=$this->call($account,$map[3],[$map[4]=>$id]+($kind==='list' && $instanceId!==''?['InstanceId'=>$instanceId]:[]));
         if (($resource[$map[4]] ?? null)!==$id) throw new ApiError('GTM 详情返回的资源标识不匹配');
-        return ['resource'=>$resource,'token'=>self::fingerprint($resource),'kind'=>$kind];
+        $detail=['resource'=>$resource,'token'=>self::fingerprint($resource),'kind'=>$kind];
+        if ($this->previewCache!==null) $this->previewCache[$cacheKey]=$detail;
+        return $detail;
     }
     public function references(array $account,string $kind,string $id): array
+    {
+        $key='references:'.$this->cacheKey($account,$kind,$id);
+        if (isset($this->previewCache[$key])) return $this->previewCache[$key];
+        $result=$this->readReferences($account,$kind,$id);
+        if ($this->previewCache!==null) $this->previewCache[$key]=$result;
+        return $result;
+    }
+    private function readReferences(array $account,string $kind,string $id): array
     {
         if ($kind==='pools') {
             $data=$this->call($account,'DescribeCloudGtmAddressPoolReference',['AddressPoolId'=>$id]);
@@ -148,6 +173,10 @@ final class Gtm
     }
     public function preview(array $account,string $operation,array $params,?string $expected): array
     {
+        return $this->previewReads(fn ()=>$this->previewOne($account,$operation,$params,$expected));
+    }
+    private function previewOne(array $account,string $operation,array $params,?string $expected): array
+    {
         $spec=self::catalog()[$operation] ?? throw new ApiError('GTM 操作无效');
         self::validateFields($params,$spec['fields']);
         $kind=$spec['kind'];$idField=self::KINDS[$kind][4];$id=$params[$idField] ?? '';
@@ -162,7 +191,7 @@ final class Gtm
         }
         $before=[];$references=[];
         if (!$spec['create']) {
-            $detail=$this->detail($account,$kind,$id);
+            $detail=$this->detail($account,$kind,$id,$params['InstanceId'] ?? '');
             if (!$expected || !hash_equals($detail['token'],$expected)) throw new ApiError('云端配置已变化，请重新打开资源后编辑',409);
             $before=$detail['resource'];$references=$this->references($account,$kind,$id);
             if ($spec['delete'] && $references) throw new ApiError('资源仍被引用，请先在上级配置中解除关联',409);
@@ -187,6 +216,10 @@ final class Gtm
         return ['ticket'=>$this->security->encrypt(json_encode($ticket,JSON_THROW_ON_ERROR)),'operation'=>$operation,'label'=>$spec['label'],'before'=>$before,'parameters'=>$params,'references'=>$references,'expires'=>$ticket['expires']];
     }
     public function previewBatch(array $account,array $steps,?string $expected): array
+    {
+        return $this->previewReads(fn ()=>$this->previewBatchOne($account,$steps,$expected));
+    }
+    private function previewBatchOne(array $account,array $steps,?string $expected): array
     {
         if (!array_is_list($steps) || !$steps || count($steps)>8) throw new ApiError('变更步骤无效');
         $previews=[];$target=null;
@@ -276,7 +309,7 @@ final class Gtm
             foreach ($this->store->read()['gtm_changes'] ?? [] as $change) if ($change['nonce']===$ticket['nonce'] && $change['status']==='success') return $change['result'];
             $operation=$ticket['operation'];$spec=self::catalog()[$operation];$params=$ticket['parameters'];$kind=$spec['kind'];$idField=self::KINDS[$kind][4];$id=$params[$idField] ?? '';
             if (!$spec['create']) {
-                $current=$this->detail($account,$kind,$id);
+                $current=$this->detail($account,$kind,$id,$params['InstanceId'] ?? $ticket['before']['InstanceId'] ?? '');
                 if (!hash_equals($ticket['token'],$current['token'])) throw new ApiError('云端配置已变化，本次未提交。请重新编辑',409);
                 if ($spec['delete'] && $this->references($account,$kind,$id)) throw new ApiError('资源已被引用，不能删除',409);
             }
@@ -289,7 +322,7 @@ final class Gtm
                 $change['resource_id']=$id;
                 $result=['submitted'=>true,'request_id'=>$response['RequestId'] ?? null,'resource_id'=>$id,'kind'=>$kind,'verification'=>'pending'];
                 if (!$spec['delete'] && $id!=='') {
-                    try { $result['resource']=$this->detail($account,$kind,$id)['resource'];$result['verification']=$this->matches($operation,$params,$result['resource'])?'confirmed':'pending'; }
+                    try { $result['resource']=$this->detail($account,$kind,$id,$params['InstanceId'] ?? $ticket['before']['InstanceId'] ?? '')['resource'];$result['token']=self::fingerprint($result['resource']);$result['verification']=$this->matches($operation,$params,$result['resource'])?'confirmed':'pending'; }
                     catch (\Throwable) { $result['verification']='unavailable'; }
                 } elseif ($spec['delete']) {
                     try { $remaining=$this->all($account,$kind);$result['verification']=array_filter($remaining,fn ($row)=>($row[$idField] ?? null)===$id)?'pending':'confirmed'; }

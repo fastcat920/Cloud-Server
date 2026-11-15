@@ -137,8 +137,10 @@ let boot = {},
 const root = document.querySelector("#app");
 const dialog = document.querySelector("#dialog");
 async function api(action, data = {}, options = {}) {
-  loading++;
-  showLoading();
+  if (!options.background) {
+    loading++;
+    showLoading();
+  }
   try {
     const url = new URL("index.php", location.href);
     url.searchParams.set("api", action);
@@ -181,8 +183,10 @@ async function api(action, data = {}, options = {}) {
     }
     return body.data;
   } finally {
-    loading--;
-    showLoading();
+    if (!options.background) {
+      loading--;
+      showLoading();
+    }
   }
 }
 function showLoading() {

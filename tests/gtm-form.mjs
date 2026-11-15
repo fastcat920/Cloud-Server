@@ -112,3 +112,14 @@ for (const [row, label] of [
   assert.equal(html.replace(/<[^>]*>/g,''), label);
 }
 console.log('PASS: one combined badge for healthy, degraded, unavailable, disabled and unknown resources');
+
+const { gtmUpdateParameters } = await import('../assets/gtm.js');
+const editFields = { AddressId:{type:'string',required:true}, Name:{type:'string'}, HealthTasks:{type:'array',items:{type:'object',properties:{TemplateId:{type:'string'},Port:{type:'integer'}}}} };
+const editBefore = {AddressId:'a',Name:'old',HealthTasks:[{TemplateId:'t',Port:443}]};
+assert.deepEqual(gtmUpdateParameters(editFields,editBefore,{...editBefore,Name:'new'}),{AddressId:'a',Name:'new'});
+assert.deepEqual(gtmUpdateParameters(editFields,editBefore,{...editBefore,HealthTasks:[]}),{AddressId:'a',HealthTasks:[]});
+assert.deepEqual(gtmUpdateParameters({InstanceId:{type:'string'},ConfigId:{type:'string',required:true},Ttl:{type:'integer'}},{InstanceId:'i',ConfigId:'c',Ttl:60},{InstanceId:'i',ConfigId:'c',Ttl:90}),{InstanceId:'i',ConfigId:'c',Ttl:90});
+console.log('PASS: update payloads include only changed fields, required identities and explicit association clears');
+
+assert.deepEqual(gtmUpdateParameters({AddressId:{type:'string',required:true},AvailableMode:{type:'string'},ManualAvailableStatus:{type:'string'}},{AddressId:'a',AvailableMode:'auto',ManualAvailableStatus:'available'},{AddressId:'a',AvailableMode:'manual',ManualAvailableStatus:'available'}),{AddressId:'a',AvailableMode:'manual',ManualAvailableStatus:'available'});
+assert.deepEqual(gtmUpdateParameters({ConfigId:{type:'string',required:true},AddressPoolLbStrategy:{type:'string'},SequenceLbStrategyMode:{type:'string'}},{ConfigId:'c',AddressPoolLbStrategy:'weight',SequenceLbStrategyMode:'preemptive'},{ConfigId:'c',AddressPoolLbStrategy:'sequence',SequenceLbStrategyMode:'preemptive'}),{ConfigId:'c',AddressPoolLbStrategy:'sequence',SequenceLbStrategyMode:'preemptive'});

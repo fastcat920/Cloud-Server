@@ -65,6 +65,16 @@ try {
  $actual=array_column(array_slice($calls(),$start),'Action');verifyGtm($actual===['DescribeCloudGtmInstanceConfigFullInfo'],'Canvas detail with known instance must avoid extra list queries');
  $start=count($calls());$gtm->options($account,'UpdateCloudGtmInstanceConfigBasic',true,'lines');
  verifyGtm(array_column(array_slice($calls(),$start),'Action')===['DescribeCloudGtmSystemLines'],'Lazy line options must not query other resource catalogs');
+ $d=$gtm->detail($account,'addresses','addr-1');$start=count($calls());
+ $fast=$gtm->previewBatch($account,[['operation'=>'UpdateCloudGtmAddress','parameters'=>['AddressId'=>'addr-1','Name'=>'fast name']],['operation'=>'UpdateCloudGtmAddressEnableStatus','parameters'=>['AddressId'=>'addr-1','EnableStatus'=>'enable']],['operation'=>'UpdateCloudGtmAddressRemark','parameters'=>['AddressId'=>'addr-1','Remark'=>'fast remark']]],$d['token']);
+ verifyGtm(array_column(array_slice($calls(),$start),'Action')===['DescribeCloudGtmAddress','DescribeCloudGtmAddressReference'],'Three-operation preview must read the resource and references just once');
+ $start=count($calls());$gtm->preview($account,'UpdateCloudGtmAddress',['AddressId'=>'addr-1','Address'=>'192.0.2.10'],$d['token']);
+ verifyGtm(array_column(array_slice($calls(),$start),'Action')===['DescribeCloudGtmAddress','DescribeCloudGtmAddressReference'],'Address type and conflict checks must share one fresh read');
+ $start=count($calls());$gtm->preview($account,'UpdateCloudGtmAddressRemark',['AddressId'=>'addr-1','Remark'=>'fresh read'],$d['token']);
+ verifyGtm(count($calls())-$start===2,'Read coalescing must never survive into the next preview');
+ $raw=json_decode(substr(file_get_contents($directory.'/gtm-fixture.php'),strlen(Store::GUARD)),true);$raw['addresses']['addr-1']['Name']='externally changed after preview';file_put_contents($directory.'/gtm-fixture.php',Store::GUARD.json_encode($raw));
+ try{$gtm->apply($account,$fast['ticket']);throw new LogicException('Coalesced preview bypassed apply conflict check');}catch(ApiError $e){verifyGtm($e->status===409,'Fresh conflict check still required at apply');}
+ $metrics=$gtm->metrics();verifyGtm($metrics['cloud_calls']>0 && $metrics['cloud_ms']>=0,'Safe timing metadata');
  echo "PASS: GTM topology, selectors, JSON RPC bindings, create/update/delete, references, stale edits, preview integrity, idempotency and verification\n";
 } finally {
  Http::$transport=null;
