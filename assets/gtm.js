@@ -544,6 +544,13 @@ export function createGtm({ api, ctx, render, queryResources }) {
           !editor.spec.create
         )
           return "";
+        if (
+          key === "ManualAvailableStatus" &&
+          (editor.values.AvailableMode ||
+            editor.resource.AvailableMode ||
+            "auto") !== "manual"
+        )
+          return "";
         const strategy = relationStrategy();
         if (key === "SequenceLbStrategyMode" && strategy !== "sequence")
           return "";
@@ -949,7 +956,11 @@ export function createGtm({ api, ctx, render, queryResources }) {
         delete container.dataset.loading;
       }
     });
-    for (const key of ["AddressPoolLbStrategy", "AddressLbStrategy"])
+    for (const key of [
+      "AddressPoolLbStrategy",
+      "AddressLbStrategy",
+      "AvailableMode",
+    ])
       form
         .querySelector(`[data-gtm-path='["${key}"]'] select`)
         ?.addEventListener("change", () => {
