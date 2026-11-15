@@ -807,11 +807,14 @@ export function createGtm({ api, ctx, render, queryResources }) {
   function drawEditor() {
     const currentSession = editor.session;
     const oldBox = document.querySelector("#gtm-inspector");
+    const oldScroller = oldBox?.closest(".gtm-drawer")
+      ? oldBox.querySelector(".gtm-inspector-body")
+      : oldBox;
     const keepPosition = oldBox?.dataset.session === String(currentSession);
     const inspectorScroll = keepPosition
       ? {
-          top: oldBox.scrollTop,
-          left: oldBox.scrollLeft,
+          top: oldScroller.scrollTop,
+          left: oldScroller.scrollLeft,
           x: window.scrollX,
           y: window.scrollY,
         }
@@ -883,7 +886,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
               )
             : "")
         : "";
-    box.innerHTML = `<form id="gtm-editor-form"><header class="gtm-inspector-head"><div><small>${e(kinds[editor.spec.kind])}</small><h3>${e(gtmName(editor.resource))}</h3></div>${button("×", "gtm.inspector.close", {}, "icon-only")}</header><div class="gtm-inspector-body"><div class="dialog-error" role="alert"></div>${editorBody()}${extra ? `<section class="gtm-editor-section gtm-editor-actions" aria-label="资源操作"><h4>资源操作</h4><div class="toolbar">${extra}</div></section>` : ""}</div><footer class="gtm-inspector-foot">${button("关闭", "gtm.inspector.close", {}, "text")}<button type="submit" class="button primary">预览并提交</button></footer></form>`;
+    box.innerHTML = `<form id="gtm-editor-form"><header class="gtm-inspector-head"><div><small>${e(kinds[editor.spec.kind])}</small><h3 id="gtm-editor-title">${e(gtmName(editor.resource))}</h3></div>${button("×", "gtm.inspector.close", {}, "icon-only")}</header><div class="gtm-inspector-body"><div class="dialog-error" role="alert"></div>${editorBody()}${extra ? `<section class="gtm-editor-section gtm-editor-actions" aria-label="资源操作"><h4>资源操作</h4><div class="toolbar">${extra}</div></section>` : ""}</div><footer class="gtm-inspector-foot">${button("关闭", "gtm.inspector.close", {}, "text")}<button type="submit" class="button primary">预览并提交</button></footer></form>`;
     const onSubmit = async (_, form) => {
       editor.values = collect(form);
       const parameters = payload();
@@ -954,9 +957,11 @@ export function createGtm({ api, ctx, render, queryResources }) {
                   : "请求已提交，请刷新查询云端状态",
             );
             const root = savedEditor.root;
+            document.querySelector("#gtm-drawer")?.close();
             editor = null;
             c.gtmDetail = null;
             await queryResources();
+            if (!root) restoreListPosition(savedEditor.returnTo);
             if (
               root &&
               !(
@@ -1112,15 +1117,49 @@ export function createGtm({ api, ctx, render, queryResources }) {
           input?.focus({ preventScroll: true });
           if (selection && input?.setSelectionRange)
             input.setSelectionRange(...selection);
+        } else if (active?.tagName === "BUTTON") {
+          [...form.querySelectorAll("button")]
+            .find(
+              (button) =>
+                button.type === active.type &&
+                JSON.stringify(button.dataset) ===
+                  JSON.stringify(active.dataset),
+            )
+            ?.focus({ preventScroll: true });
         }
-        box.scrollTop = inspectorScroll.top;
-        box.scrollLeft = inspectorScroll.left;
+        const scroller = box.closest(".gtm-drawer")
+          ? box.querySelector(".gtm-inspector-body")
+          : box;
+        scroller.scrollTop = inspectorScroll.top;
+        scroller.scrollLeft = inspectorScroll.left;
         window.scrollTo(inspectorScroll.x, inspectorScroll.y);
       };
       restore();
       requestAnimationFrame(restore);
-    } else if (!ctx().gtmDetail)
-      box.scrollIntoView({ block: "start", behavior: "instant" });
+    }
+    const drawer = document.querySelector("#gtm-drawer");
+    if (drawer && !drawer.open) {
+      drawer.addEventListener("cancel", (event) => {
+        event.preventDefault();
+        actions["gtm.inspector.close"]();
+      });
+      drawer.addEventListener("click", (event) => {
+        const rect = drawer.getBoundingClientRect();
+        if (
+          event.target === drawer &&
+          (event.clientX < rect.left ||
+            event.clientX > rect.right ||
+            event.clientY < rect.top ||
+            event.clientY > rect.bottom)
+        )
+          actions["gtm.inspector.close"]();
+      });
+      drawer.showModal();
+      form
+        .querySelector("input:not([readonly]), textarea, select")
+        ?.focus({ preventScroll: true });
+      restoreListPosition(editor.returnTo, false);
+    }
   }
   function formatValue(value) {
     if (value === undefined) return '<span class="help">未设置</span>';
@@ -1142,7 +1181,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
         return true;
     } catch {}
     return window.confirm(
-      "当前编辑尚未提交，切换操作会放弃这些修改，是否继续？",
+      "当前有未保存的修改，离开编辑会放弃这些内容，是否继续？",
     );
   }
   async function edit(operation, kind, id, attach = null) {
@@ -1150,6 +1189,9 @@ export function createGtm({ api, ctx, render, queryResources }) {
     const requested = ++session;
     const c = ctx(),
       selectedAccount = c.account;
+    const returnTo = !c.gtmDetail
+      ? editor?.returnTo || { x: window.scrollX, y: window.scrollY, kind, id }
+      : null;
     if (!c.account) throw new Error("请先选择阿里云账号");
     const allOperations = await catalog();
     const sourceOp = allOperations[operation];
@@ -1183,6 +1225,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
     if (requested !== session || selectedAccount !== ctx().account) return;
     editor = {
       session: requested,
+      returnTo,
       attach,
       root: c.gtmDetail
         ? {
@@ -1261,10 +1304,27 @@ export function createGtm({ api, ctx, render, queryResources }) {
     c.gtmDetail = detail;
     render();
   }
+  function restoreListPosition(position, focus = true) {
+    if (!position) return;
+    const restore = () => {
+      if (focus) {
+        const selector = position.id
+          ? `[data-action="gtm.edit"][data-kind="${CSS.escape(position.kind)}"][data-id="${CSS.escape(position.id)}"]`
+          : `[data-action="gtm.create"][data-kind="${CSS.escape(position.kind)}"]`;
+        document.querySelector(selector)?.focus({ preventScroll: true });
+      }
+      window.scrollTo(position.x, position.y);
+    };
+    restore();
+    requestAnimationFrame(restore);
+  }
   function inspectorShell() {
-    return editor
-      ? '<aside class="gtm-inspector" id="gtm-inspector" aria-label="GTM 参数编辑"></aside>'
-      : "";
+    if (!editor) return "";
+    const content =
+      '<aside class="gtm-inspector" id="gtm-inspector" aria-label="GTM 参数编辑"></aside>';
+    return ctx().gtmDetail
+      ? content
+      : `<dialog class="gtm-drawer" id="gtm-drawer" aria-labelledby="gtm-editor-title">${content}</dialog>`;
   }
   function topology(detail) {
     const resource = normalizeGtm(detail.resource),
@@ -1463,8 +1523,11 @@ export function createGtm({ api, ctx, render, queryResources }) {
     "gtm.inspector.close": () => {
       if (!mayDiscard()) return;
       ++session;
+      const position = editor?.returnTo;
+      document.querySelector("#gtm-drawer")?.close();
       editor = null;
       render();
+      restoreListPosition(position);
     },
     "gtm.canvas.refresh": () => {
       const detail = ctx().gtmDetail;
