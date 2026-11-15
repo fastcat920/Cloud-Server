@@ -19,6 +19,9 @@ Http::$transport=function($method,$url,$headers,$body){parse_str($method==='POST
 try {
  $list=$gtm->listing($account,'list');verifyGtm(count($list['items'])===1 && $list['items'][0]['ConfigId']==='config-1','Typed list extraction');
  $detail=$gtm->detail($account,'list','config-1');verifyGtm($detail['resource']['AddressPools']['AddressPool'][0]['Addresses']['Address'][0]['AddressId']==='addr-1','Complete topology');
+ $fixture=json_decode(substr(file_get_contents($directory.'/gtm-fixture.php'),strlen(Store::GUARD)),true);
+ $details=array_values(array_filter($fixture['calls'],fn($row)=>$row['Action']==='DescribeCloudGtmInstanceConfigFullInfo'));
+ verifyGtm($details[0]['InstanceId']==='gtm-1' && $details[0]['ConfigId']==='config-1','Detail must send both instance and config identifiers');
  $options=$gtm->options($account);verifyGtm(count($options['instances'])===1 && $options['nodes'] && !$options['errors'],'Resource selectors');
  $preview=$gtm->preview($account,'UpdateCloudGtmInstanceConfigBasic',['ConfigId'=>'config-1','InstanceId'=>'gtm-1','Ttl'=>90],$detail['token']);
  $result=$gtm->apply($account,$preview['ticket']);verifyGtm($result['verification']==='confirmed' && $result['resource']['Ttl']===90,'Apply and verify');

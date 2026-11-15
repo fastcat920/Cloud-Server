@@ -12,6 +12,7 @@ function gtmFixture(array $query): array
         'sequence'=>1,'calls'=>[],
     ];
     $action=$query['Action'];$s['calls'][]=$query;
+    if (isset($query['ConfigId']) && (!isset($query['InstanceId']) || ($s['list'][$query['ConfigId']]['InstanceId'] ?? null)!==$query['InstanceId'])) throw new RuntimeException('params error: missing or mismatched InstanceId');
     $expand=function(string $kind,array $row) use (&$expand,&$s): array {
         if($kind==='list')$row['AddressPools']=['AddressPool'=>array_map(fn($item)=>$expand('pools',array_merge($s['pools'][$item['AddressPoolId']],$item)),$row['AddressPools']??[])];
         if($kind==='pools')$row['Addresses']=['Address'=>array_map(fn($item)=>$expand('addresses',array_merge($s['addresses'][$item['AddressId']],$item)),$row['Addresses']??[])];

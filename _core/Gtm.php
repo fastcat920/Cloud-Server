@@ -16,10 +16,18 @@ final class Gtm
     public static function catalog(): array { static $catalog; return $catalog ??= json_decode(file_get_contents(__DIR__.'/gtm-operations.json'),true,64,JSON_THROW_ON_ERROR); }
     private function call(array $account,string $operation,array $params=[]): array
     {
+        if (!empty($params['ConfigId']) && empty($params['InstanceId'])) {
+            foreach ($this->all($account,'list') as $config) {
+                if (($config['ConfigId'] ?? null)===$params['ConfigId']) { $params['InstanceId']=$config['InstanceId'] ?? ''; break; }
+            }
+            if (empty($params['InstanceId'])) throw new ApiError('未找到接入配置对应的 GTM 实例，请重新查询列表');
+        }
         foreach (self::catalog()[$operation]['json'] ?? [] as $field) {
             if (isset($params[$field]) && is_array($params[$field])) $params[$field]=json_encode($params[$field],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
         }
+        try {
         return $this->cloud->rpc($account,$operation,['AcceptLanguage'=>'zh-CN']+$params,service:'alidns',method:isset(self::catalog()[$operation])?'POST':'GET');
+        } catch (\RuntimeException $error) { throw new \RuntimeException('GTM '.$operation.'：'.$error->getMessage(),0,$error); }
     }
     public function listing(array $account,string $kind,int $page=1,array $filters=[]): array
     {
