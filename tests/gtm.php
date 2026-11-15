@@ -60,6 +60,11 @@ try {
  $batch=$gtm->previewBatch($account,[['operation'=>'UpdateCloudGtmAddressRemark','parameters'=>['AddressId'=>'addr-1','Remark'=>'partial remark']],['operation'=>'UpdateCloudGtmAddressEnableStatus','parameters'=>['AddressId'=>'addr-1','EnableStatus'=>'enable']]],$d['token']);
  Http::$transport=function($method,$url,$headers,$body)use($originalTransport){parse_str($body??'',$q);if(($q['Action']??'')==='UpdateCloudGtmAddressEnableStatus')throw new RuntimeException('simulated write failure');return $originalTransport($method,$url,$headers,$body);};
  $partial=$gtm->apply($account,$batch['ticket']);verifyGtm($partial['partial'] && count($partial['steps'])===1 && str_contains($partial['error'],'simulated'),'Partial failure must stop and report completed steps');Http::$transport=$originalTransport;
+ $calls=function()use($directory){$state=json_decode(substr(file_get_contents($directory.'/gtm-fixture.php'),strlen(Store::GUARD)),true);return $state['calls'];};
+ $start=count($calls());$freshGtm=new Gtm($cloud,$store,$security);$freshGtm->detail($account,'list','config-1','gtm-1');
+ $actual=array_column(array_slice($calls(),$start),'Action');verifyGtm($actual===['DescribeCloudGtmInstanceConfigFullInfo'],'Canvas detail with known instance must avoid extra list queries');
+ $start=count($calls());$gtm->options($account,'UpdateCloudGtmInstanceConfigBasic',true,'lines');
+ verifyGtm(array_column(array_slice($calls(),$start),'Action')===['DescribeCloudGtmSystemLines'],'Lazy line options must not query other resource catalogs');
  echo "PASS: GTM topology, selectors, JSON RPC bindings, create/update/delete, references, stale edits, preview integrity, idempotency and verification\n";
 } finally {
  Http::$transport=null;

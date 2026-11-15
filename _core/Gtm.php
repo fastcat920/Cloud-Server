@@ -12,12 +12,14 @@ final class Gtm
         'monitors'=>['ListCloudGtmMonitorTemplates','Templates','Template','DescribeCloudGtmMonitorTemplate','TemplateId'],
         'instances'=>['ListCloudGtmInstances','Instances','Instance'],
     ];
+    private array $instanceIds = [];
     public function __construct(private Cloud $cloud, private Store $store, private Security $security) {}
     public static function catalog(): array { static $catalog; return $catalog ??= json_decode(file_get_contents(__DIR__.'/gtm-operations.json'),true,64,JSON_THROW_ON_ERROR); }
     private function call(array $account,string $operation,array $params=[]): array
     {
         if (!empty($params['ConfigId']) && empty($params['InstanceId'])) {
-            foreach ($this->all($account,'list') as $config) {
+            $params['InstanceId']=$this->instanceIds[$account['id']][$params['ConfigId']] ?? '';
+            foreach ($params['InstanceId'] ? [] : $this->all($account,'list') as $config) {
                 if (($config['ConfigId'] ?? null)===$params['ConfigId']) { $params['InstanceId']=$config['InstanceId'] ?? ''; break; }
             }
             if (empty($params['InstanceId'])) throw new ApiError('未找到接入配置对应的 GTM 实例，请重新查询列表');
@@ -42,6 +44,7 @@ final class Gtm
         $data=$this->call($account,$map[0],['PageNumber'=>max(1,$page),'PageSize'=>100]+$filters);
         $items=$data[$map[1]][$map[2]] ?? [];
         if (!is_array($items) || ($items && !array_is_list($items))) throw new ApiError('GTM 列表返回格式异常');
+        if ($kind==='list') foreach ($items as $item) if (isset($item['ConfigId'],$item['InstanceId'])) $this->instanceIds[$account['id']][$item['ConfigId']]=$item['InstanceId'];
         return ['items'=>$items,'total'=>(int)($data['TotalItems'] ?? count($items)),'page'=>$page,'request_id'=>$data['RequestId'] ?? null];
     }
     private function all(array $account,string $kind,array $filters=[]): array
@@ -64,11 +67,11 @@ final class Gtm
         };
         return hash('sha256',json_encode($clean($resource),JSON_THROW_ON_ERROR));
     }
-    public function detail(array $account,string $kind,string $id): array
+    public function detail(array $account,string $kind,string $id,string $instanceId=''): array
     {
         $map=self::KINDS[$kind] ?? throw new ApiError('GTM 资源类型无效');
         if (!isset($map[3]) || $id==='') throw new ApiError('缺少 GTM 资源 ID');
-        $resource=$this->call($account,$map[3],[$map[4]=>$id]);
+        $resource=$this->call($account,$map[3],[$map[4]=>$id]+($kind==='list' && $instanceId!==''?['InstanceId'=>$instanceId]:[]));
         if (($resource[$map[4]] ?? null)!==$id) throw new ApiError('GTM 详情返回的资源标识不匹配');
         return ['resource'=>$resource,'token'=>self::fingerprint($resource),'kind'=>$kind];
     }
@@ -85,7 +88,7 @@ final class Gtm
         if ($kind==='monitors') return $this->all($account,'addresses',['MonitorTemplateId'=>$id]);
         return [];
     }
-    public function options(array $account, ?string $operation = null, bool $unified = false): array
+    public function options(array $account, ?string $operation = null, bool $unified = false, ?string $section = null): array
     {
         $result=['errors'=>[]];
         $needed=array_fill_keys([...array_keys(self::KINDS),'nodes','lines'],true);
@@ -104,6 +107,10 @@ final class Gtm
                 }
             };
             $walk($spec['fields']);
+        }
+        if ($section!==null) {
+            if (!in_array($section,[...array_keys(self::KINDS),'nodes','lines'],true)) throw new ApiError('GTM 选项类型无效');
+            $needed=array_intersect_key($needed,[$section=>true]);
         }
         foreach (array_keys(self::KINDS) as $kind) {
             if (!isset($needed[$kind])) continue;

@@ -309,21 +309,101 @@ if (typeof document !== "undefined")
 export function createGtm({ api, ctx, render, queryResources }) {
   let editor = null,
     session = 0;
+  let nameIndex = null;
   async function catalog() {
     const c = ctx();
     c.gtmCatalog ??= await api("gtm.catalog", { account_id: c.account });
     return c.gtmCatalog;
   }
-  async function options(operation, unified = false) {
-    const c = ctx();
+  async function options(operation, section) {
+    const c = ctx(),
+      account = c.account;
     c.gtmOptions ??= {};
-    const key = operation + (unified ? ":all" : "");
-    c.gtmOptions[key] ??= await api("gtm.options", {
-      account_id: c.account,
+    const key = `${account}:${section}`;
+    const cached = c.gtmOptions[key];
+    if (
+      cached &&
+      Date.now() - cached.time < (section === "lines" ? 600000 : 30000)
+    )
+      return cached.promise;
+    const promise = api("gtm.options", {
+      account_id: account,
       operation,
-      unified,
+      unified: true,
+      section,
     });
-    return c.gtmOptions[key];
+    c.gtmOptions[key] = { time: Date.now(), promise };
+    try {
+      const result = await promise;
+      if (Object.keys(result.errors || {}).length) delete c.gtmOptions[key];
+      return result;
+    } catch (error) {
+      delete c.gtmOptions[key];
+      throw error;
+    }
+  }
+  function knownResources() {
+    if (nameIndex) return nameIndex;
+    const found = new Map();
+    const walk = (row) => {
+      if (!row || typeof row !== "object") return;
+      for (const key of Object.values(ids).concat("InstanceId"))
+        if (row[key]) found.set(row[key], row);
+      for (const task of row.HealthTasks || [])
+        if (task.TemplateName)
+          found.set(task.TemplateId, { Name: task.TemplateName });
+      for (const child of [
+        ...(row.AddressPools || []),
+        ...(row.Addresses || []),
+      ])
+        walk(child);
+    };
+    for (const row of ctx().items || []) walk(normalizeGtm(row));
+    if (ctx().gtmDetail) walk(normalizeGtm(ctx().gtmDetail.resource));
+    if (editor) {
+      walk(editor.resource);
+      for (const key of ["pools", "addresses", "monitors", "instances"])
+        for (const row of editor.options[key] || []) walk(row);
+    }
+    nameIndex = found;
+    return found;
+  }
+  function displayName(row) {
+    return (
+      row?.ScheduleDomainName ||
+      row?.AddressPoolName ||
+      row?.Name ||
+      row?.InstanceName ||
+      row?.Address ||
+      "未命名资源"
+    );
+  }
+  function relationStrategy() {
+    return (
+      editor.values.AddressPoolLbStrategy ||
+      editor.values.AddressLbStrategy ||
+      editor.resource.AddressPoolLbStrategy ||
+      editor.resource.AddressLbStrategy ||
+      "round_robin"
+    );
+  }
+  function sourceKind(key) {
+    return {
+      AddressPoolId: "pools",
+      AddressId: "addresses",
+      TemplateId: "monitors",
+      InstanceId: "instances",
+    }[key];
+  }
+  async function loadOptions(section) {
+    const current = editor;
+    const result = await options(current.operation, section);
+    if (editor !== current) return;
+    Object.assign(editor.options, result);
+    nameIndex = null;
+    if (result.errors?.[section]) throw new Error(result.errors[section]);
+    if (section === "lines") refreshLineTags();
+    return result;
   }
   function choices(key, spec, value) {
     const o = editor.options;
@@ -363,7 +443,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
         );
       result = candidates.map((row) => ({
         value: row[source[1]],
-        label: gtmName(row) + " · " + row[source[1]],
+        label: displayName(row),
       }));
     }
     if (key === "RequestSource")
@@ -379,8 +459,76 @@ export function createGtm({ api, ctx, render, queryResources }) {
       value !== "" &&
       !result.some((row) => String(row.value) === String(value))
     )
-      result.unshift({ value, label: String(value) + "（当前值）" });
+      result.unshift({
+        value,
+        label: displayName(knownResources().get(value)),
+      });
     return result;
+  }
+  function lineName(code) {
+    if (code === "default") return "默认";
+    const line = editor.options.lines?.SystemLines?.SystemLine?.find(
+      (row) => row.Code === code,
+    );
+    return line?.DisplayName || line?.Name || "已配置线路";
+  }
+  function lineControl(path, values, label) {
+    const encoded = JSON.stringify(path),
+      active = editor.linePath === encoded;
+    return `<fieldset class="gtm-fieldset gtm-lines" data-lines-path="${e(encoded)}"><legend>${e(label || "请求来源线路")}</legend><div class="gtm-line-tags">${values.map((value, index) => `<span class="gtm-line-tag">${e(lineName(value))}${button("×", "gtm.row.remove", { path: encoded, index }, "text danger")}</span>`).join("") || '<span class="help">尚未选择线路</span>'}</div>${button(active ? "收起选择" : "选择线路", "gtm.lines.open", { path: encoded }, "text")}${active ? '<div class="gtm-line-menu"><input type="search" class="gtm-line-search" placeholder="搜索地区或运营商" aria-label="搜索请求来源线路"><div class="gtm-line-results" aria-live="polite"></div></div>' : ""}</fieldset>`;
+  }
+  function refreshLineTags() {
+    for (const fieldset of document.querySelectorAll("[data-lines-path]")) {
+      const path = JSON.parse(fieldset.dataset.linesPath);
+      let values = editor.values;
+      for (const part of path) values = values[part];
+      const container = document.createElement("div");
+      container.innerHTML = lineControl(path, values, "请求来源线路");
+      fieldset
+        .querySelector(".gtm-line-tags")
+        .replaceWith(container.querySelector(".gtm-line-tags"));
+    }
+  }
+  function lineValues() {
+    let values = editor.values;
+    for (const part of JSON.parse(editor.linePath)) values = values[part];
+    return values;
+  }
+  function drawLines(query = "") {
+    const target = document.querySelector(".gtm-line-results");
+    if (!target || !editor?.linePath) return;
+    const lines = editor.options.lines?.SystemLines?.SystemLine;
+    if (!lines) {
+      target.innerHTML = '<p class="help">正在加载线路…</p>';
+      return;
+    }
+    const branch = editor.lineBranch || "",
+      values = lineValues(),
+      byCode = new Map(lines.map((row) => [row.Code, row]));
+    let trail = [],
+      parent = branch,
+      seen = new Set();
+    while (byCode.has(parent) && !seen.has(parent)) {
+      seen.add(parent);
+      const row = byCode.get(parent);
+      trail.unshift(row);
+      parent = row.ParentCode;
+    }
+    const children = new Set(
+      lines.map((row) => row.ParentCode).filter(Boolean),
+    );
+    const filtered = query
+      ? lines.filter((row) =>
+          (row.DisplayName || row.Name || "")
+            .toLowerCase()
+            .includes(query.toLowerCase()),
+        )
+      : lines.filter(
+          (row) =>
+            (byCode.has(row.ParentCode) ? row.ParentCode : "") === branch,
+        );
+    const candidates = filtered.slice(0, 80);
+    target.innerHTML = `<nav class="gtm-line-breadcrumb" aria-label="线路层级">${button("全部线路", "gtm.lines.branch", { code: "" }, "text")}${trail.map((row) => button(row.Name || row.DisplayName, "gtm.lines.branch", { code: row.Code }, "text")).join("")}</nav><div class="gtm-line-list">${candidates.map((row) => `<div class="gtm-line-option"><label class="check"><input type="checkbox" data-line-code="${e(row.Code)}" ${values.includes(row.Code) ? "checked" : ""} ${row.IsAvailable === false || row.IsAvailable === "false" ? "disabled" : ""}>${e(query ? row.DisplayName || row.Name : row.Name || row.DisplayName)}</label>${children.has(row.Code) ? button("展开 ›", "gtm.lines.branch", { code: row.Code }, "text") : ""}</div>`).join("") || '<p class="help">没有匹配的线路</p>'}</div>${filtered.length > 80 ? '<p class="help">当前显示前 80 项，请输入更具体的地区或运营商。</p>' : ""}`;
   }
   function controls(fields, value, path = []) {
     return Object.entries(fields)
@@ -390,6 +538,25 @@ export function createGtm({ api, ctx, render, queryResources }) {
           name = "gtm_" + encodeURIComponent(encoded),
           v = value[key];
         if (key === "ExtendInfo") return "";
+        if (
+          path.length === 0 &&
+          Object.values(ids).concat("InstanceId").includes(key) &&
+          !editor.spec.create
+        )
+          return "";
+        const strategy = relationStrategy();
+        if (key === "SequenceLbStrategyMode" && strategy !== "sequence")
+          return "";
+        if (path.length && key === "WeightValue" && strategy !== "weight")
+          return "";
+        if (
+          path.length &&
+          key === "SerialNumber" &&
+          !["sequence", "source_nearest"].includes(strategy)
+        )
+          return "";
+        if (key === "RequestSource")
+          return lineControl(p, Array.isArray(v) ? v : [], spec.label);
         if (spec.type === "array") {
           const items = Array.isArray(v) ? v : [];
           if (key === "IspCityNodes") {
@@ -422,9 +589,9 @@ export function createGtm({ api, ctx, render, queryResources }) {
                     selected.CityName || `当前城市 ${selected.CityCode}`,
                   IspName: selected.IspName || `运营商 ${selected.IspCode}`,
                 });
-            return `<fieldset class="gtm-fieldset"><legend>${e(spec.label)}</legend>${visibleNodes.length ? visibleNodes.map((node, i) => `<label class="check"><input type="checkbox" data-gtm-node="${i}" data-city="${e(node.CityCode)}" data-isp="${e(node.IspCode)}" ${items.some((item) => item.CityCode === node.CityCode && item.IspCode === node.IspCode) ? "checked" : ""}>${e([node.GroupName, node.CityName, node.IspName].filter(Boolean).join(" / "))}</label>`).join("") : '<p class="notice warn">无法读取探测节点，创建模板前请检查查询权限。</p>'}</fieldset>`;
+            return `<fieldset class="gtm-fieldset" data-gtm-nodes><legend>${e(spec.label)}</legend>${visibleNodes.length ? visibleNodes.map((node, i) => `<label class="check"><input type="checkbox" data-gtm-node="${i}" data-city="${e(node.CityCode)}" data-isp="${e(node.IspCode)}" ${items.some((item) => item.CityCode === node.CityCode && item.IspCode === node.IspCode) ? "checked" : ""}>${e([node.GroupName, node.CityName, node.IspName].filter(Boolean).join(" / "))}</label>`).join("") : '<p class="help">' + (editor.options.nodes ? "没有可用探测节点，请检查查询权限。" : "正在加载探测节点…") + "</p>"}</fieldset>`;
           }
-          return `<fieldset class="gtm-fieldset"><legend>${e(spec.label)}${spec.required ? " *" : ""}</legend>${["Addresses", "AddressPools"].includes(key) ? '<p class="help">这里只修改当前关联列表，不会全局删除资源。上移/下移会重排优先序号；顺序/主备策略才按该序号调度，权重和线路保持不变。</p>' : ""}${items.length ? items.map((item, i) => `<div class="gtm-repeat"><div class="gtm-repeat-head"><strong>第 ${i + 1} 项</strong><span class="toolbar">${["Addresses", "AddressPools"].includes(key) ? button("上移", "gtm.row.move", { path: encoded, index: i, to: i - 1 }, "text") + button("下移", "gtm.row.move", { path: encoded, index: i, to: i + 1 }, "text") : ""}${button(["Addresses", "AddressPools"].includes(key) ? "解除引用" : "移除", "gtm.row.remove", { path: encoded, index: i }, "text")}</span></div>${spec.items.type === "object" ? controls(spec.items.properties, item, [...p, String(i)]) : scalar(key, spec.items, item, [...p, String(i)])}</div>`).join("") : '<p class="help">暂无关联项。清空关联列表会解除全部引用。</p>'}${button("添加一项", "gtm.row.add", { path: encoded }, "text", "plus")}</fieldset>`;
+          return `<fieldset class="gtm-fieldset"><legend>${e(spec.label)}${spec.required ? " *" : ""}</legend>${["Addresses", "AddressPools"].includes(key) ? '<p class="help">这里只修改当前关联列表，不会全局删除资源。上移/下移会重排优先序号；顺序/主备策略才按该序号调度，权重和线路保持不变。</p>' : ""}${items.length ? items.map((item, i) => `<div class="gtm-repeat"><div class="gtm-repeat-head"><strong>第 ${i + 1} 项</strong><span class="toolbar">${["Addresses", "AddressPools"].includes(key) && ["sequence", "source_nearest"].includes(strategy) ? button("上移", "gtm.row.move", { path: encoded, index: i, to: i - 1 }, "text") + button("下移", "gtm.row.move", { path: encoded, index: i, to: i + 1 }, "text") : ""}${button(["Addresses", "AddressPools"].includes(key) ? "解除引用" : "移除", "gtm.row.remove", { path: encoded, index: i }, "text danger")}</span></div>${spec.items.type === "object" ? controls(spec.items.properties, item, [...p, String(i)]) : scalar(key, spec.items, item, [...p, String(i)])}</div>`).join("") : '<p class="help">暂无关联项。清空关联列表会解除全部引用。</p>'}${button("添加一项", "gtm.row.add", { path: encoded }, "text", "plus")}</fieldset>`;
         }
         return scalar(key, spec, v, p);
       })
@@ -470,7 +637,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
             : "text",
         `${required} ${spec.type === "integer" ? `step="1" ${spec.minimum !== undefined ? `min="${spec.minimum}"` : ""} ${spec.maximum !== undefined ? `max="${spec.maximum}"` : ""}` : ""}`,
       );
-    return `<div data-gtm-path="${e(encoded)}" data-type="${spec.type}" data-required="${spec.required ? "1" : "0"}" data-input="${e(name)}">${input}</div>`;
+    return `<div data-gtm-path="${e(encoded)}" data-type="${spec.type}" data-required="${spec.required ? "1" : "0"}" data-input="${e(name)}" ${sourceKind(key) && !identity ? `data-gtm-source="${sourceKind(key)}"` : ""}>${input}</div>`;
   }
   function editorBody() {
     const errors = Object.entries(editor.options.errors || {}).map(
@@ -487,7 +654,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
             ...(protocol === "https" ? ["sni"] : []),
             "followRedirect",
           ];
-    return `${editor.bindingHint ? `<div class="notice">${e(editor.bindingHint)}</div>` : ""}${editor.references.length ? `<div class="notice warn">此资源被 ${editor.references.length} 项资源引用，修改会作用于所有引用。请在提交前核对关联。</div>` : ""}${errors.length ? `<details class="notice warn"><summary>部分辅助资源读取失败</summary>${errors.map(e).join("<br>")}</details>` : ""}<div class="gtm-form-grid">${controls(editor.spec.fields, editor.values)}</div>${Object.hasOwn(editor.spec.fields, "ExtendInfo") && protocol !== "tcp" ? `<fieldset class="gtm-fieldset"><legend>${e(protocol?.toUpperCase() || "")} 协议参数</legend><div class="gtm-form-grid">${controls(Object.fromEntries(protocolFields.map((key) => [key, extensionSchema[key]])), editor.values.ExtendInfo || {}, ["ExtendInfo"])}</div></fieldset>` : ""}`;
+    return `${editor.bindingHint ? `<div class="notice">${e(editor.bindingHint)}</div>` : ""}${!editor.spec.create && editor.spec.kind !== "list" ? '<div class="notice warn">共享资源的修改会影响其他引用，提交预览时将核对引用范围。</div>' : ""}<p id="gtm-aux-status" class="help" role="status"></p>${errors.length ? `<details class="notice warn"><summary>部分辅助资源读取失败</summary>${errors.map(e).join("<br>")}</details>` : ""}<div class="gtm-form-grid">${controls(editor.spec.fields, editor.values)}</div>${Object.hasOwn(editor.spec.fields, "ExtendInfo") && protocol !== "tcp" ? `<fieldset class="gtm-fieldset"><legend>${e(protocol?.toUpperCase() || "")} 协议参数</legend><div class="gtm-form-grid">${controls(Object.fromEntries(protocolFields.map((key) => [key, extensionSchema[key]])), editor.values.ExtendInfo || {}, ["ExtendInfo"])}</div></fieldset>` : ""}`;
   }
   function collect(form) {
     const values = structuredClone(editor.values);
@@ -550,7 +717,9 @@ export function createGtm({ api, ctx, render, queryResources }) {
         ? (editor.resource.HealthTasks || [])
             .map((task) =>
               button(
-                "编辑探测模板 " + (task.TemplateName || task.TemplateId),
+                "编辑探测模板 " +
+                  (task.TemplateName ||
+                    displayName(knownResources().get(task.TemplateId))),
                 "gtm.edit",
                 {
                   kind: "monitors",
@@ -721,6 +890,72 @@ export function createGtm({ api, ctx, render, queryResources }) {
         btn.disabled = false;
       }
     });
+    drawLines();
+    form
+      .querySelector(".gtm-line-search")
+      ?.addEventListener("input", (event) => drawLines(event.target.value));
+    form
+      .querySelector(".gtm-line-results")
+      ?.addEventListener("change", (event) => {
+        if (!event.target.matches("[data-line-code]")) return;
+        editor.values = collect(form);
+        const values = lineValues(),
+          code = event.target.dataset.lineCode;
+        if (event.target.checked && !values.includes(code)) values.push(code);
+        else if (!event.target.checked && values.includes(code))
+          values.splice(values.indexOf(code), 1);
+        const container = event.target.closest("[data-lines-path]");
+        const tags = document.createElement("div");
+        tags.innerHTML = lineControl(
+          JSON.parse(editor.linePath),
+          values,
+          "请求来源线路",
+        );
+        container
+          .querySelector(".gtm-line-tags")
+          .replaceWith(tags.querySelector(".gtm-line-tags"));
+      });
+    form.addEventListener("focusin", async (event) => {
+      const container = event.target.closest("[data-gtm-source]");
+      if (
+        !container ||
+        container.dataset.loaded === "1" ||
+        container.dataset.loading
+      )
+        return;
+      container.dataset.loading = "1";
+      const status = form.querySelector("#gtm-aux-status");
+      status.textContent = "正在加载可选资源…";
+      try {
+        await loadOptions(container.dataset.gtmSource);
+        if (!form.isConnected) return;
+        const path = JSON.parse(container.dataset.gtmPath),
+          key = path.at(-1),
+          input = event.target;
+        const values = choices(key, {}, input.value) || [],
+          selected = input.value;
+        input.replaceChildren(
+          ...(container.dataset.required === "1"
+            ? []
+            : [new Option("未设置", "")]),
+          ...values.map((row) => new Option(row.label, row.value)),
+        );
+        input.value = selected;
+        container.dataset.loaded = "1";
+        status.textContent = "";
+      } catch (error) {
+        if (form.isConnected) status.textContent = error.message;
+      } finally {
+        delete container.dataset.loading;
+      }
+    });
+    for (const key of ["AddressPoolLbStrategy", "AddressLbStrategy"])
+      form
+        .querySelector(`[data-gtm-path='["${key}"]'] select`)
+        ?.addEventListener("change", () => {
+          editor.values = collect(form);
+          drawEditor();
+        });
     for (const key of ["Protocol", "IpVersion"])
       form
         .querySelector(`[data-gtm-path='["${key}"]'] select`)
@@ -782,22 +1017,17 @@ export function createGtm({ api, ctx, render, queryResources }) {
           }
         : sourceOp;
     if (!op) throw new Error("不支持此操作");
+    const known = knownResources().get(id);
     const detail = op.create
       ? { resource: {}, token: null }
       : await api("gtm.resource", {
-          account_id: c.account,
+          account_id: selectedAccount,
           kind: op.kind,
           resource: id,
-        });
-    const refs = op.create
-      ? []
-      : await api("gtm.references", {
-          account_id: c.account,
-          kind: op.kind,
-          resource: id,
+          instance_id: known?.InstanceId,
         });
     const resource = normalizeGtm(detail.resource),
-      opts = await options(operation, !op.create && !op.delete);
+      opts = { errors: {} };
     if (requested !== session || selectedAccount !== ctx().account) return;
     editor = {
       session: requested,
@@ -814,7 +1044,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
       spec: op,
       resource,
       token: detail.token,
-      references: refs,
+      references: [],
       options: opts,
       values: initial(op.fields, resource, op.create),
     };
@@ -836,6 +1066,27 @@ export function createGtm({ api, ctx, render, queryResources }) {
     }
     editor.baseline = structuredClone(editor.values);
     drawEditor();
+    // Only monitor forms need auxiliary data without an explicit user interaction.
+    if (op.fields.IspCityNodes)
+      loadOptions("nodes")
+        .then(() => {
+          if (editor?.session !== requested) return;
+          const form = document.querySelector("#gtm-editor-form");
+          editor.values = collect(form);
+          const container = document.createElement("div");
+          container.innerHTML = controls(
+            { IspCityNodes: editor.spec.fields.IspCityNodes },
+            editor.values,
+          );
+          form
+            .querySelector("[data-gtm-nodes]")
+            ?.replaceWith(container.firstElementChild);
+        })
+        .catch((error) => {
+          if (editor?.session === requested)
+            document.querySelector("#gtm-aux-status").textContent =
+              error.message;
+        });
   }
   async function open(kind, id) {
     if (!mayDiscard()) return;
@@ -843,19 +1094,19 @@ export function createGtm({ api, ctx, render, queryResources }) {
     ++session;
     const c = ctx(),
       account = c.account;
-    const detail = await api("gtm.resource", {
-      account_id: account,
-      kind,
-      resource: id,
-    });
-    const refs = await api("gtm.references", {
-      account_id: account,
-      kind,
-      resource: id,
-    });
-    if (c.account !== account) return;
-    c.gtmDetail = { ...detail, references: refs };
-    await catalog();
+    const requested = session,
+      known = knownResources().get(id);
+    const [detail] = await Promise.all([
+      api("gtm.resource", {
+        account_id: account,
+        kind,
+        resource: id,
+        instance_id: known?.InstanceId,
+      }),
+      catalog(),
+    ]);
+    if (c.account !== account || session !== requested) return;
+    c.gtmDetail = detail;
     render();
   }
   function inspectorShell() {
@@ -884,14 +1135,14 @@ export function createGtm({ api, ctx, render, queryResources }) {
         },
         monitors: { basic: "UpdateCloudGtmMonitorTemplate" },
       })[type][mode];
-    const card = (type, row) => {
+    const card = (type, row, parentStrategy) => {
       const selected =
         editor?.spec.kind === type &&
         editor.resource[ids[type]] === row[ids[type]];
-      return `<article role="button" tabindex="0" aria-label="编辑 ${e(gtmName(row))}" data-action="gtm.edit" data-kind="${type}" data-id="${e(row[ids[type]])}" data-operation="${opFor(type, "basic")}" class="gtm-node gtm-node-${type} gtm-state-${gtmStatus(row)} ${selected ? "selected" : ""}"><div class="gtm-node-title"><span class="gtm-node-name">${e(gtmName(row))}</span><span class="gtm-kind">${e(kinds[type])}</span></div><div class="gtm-node-meta">${stateBadge(row)}${row.Ttl ? `<span>TTL ${e(row.Ttl)}s</span>` : ""}</div>${row.Address ? `<div class="gtm-node-address mono">${e(row.Address)}</div>` : ""}<div class="gtm-node-meta gtm-node-policy">${row.SerialNumber !== undefined ? `<span>序 ${e(row.SerialNumber)}</span>` : ""}${row.WeightValue !== undefined ? `<span>权重 ${e(row.WeightValue)}</span>` : ""}${enums[row.AddressPoolLbStrategy || row.AddressLbStrategy] ? `<span>${e(enums[row.AddressPoolLbStrategy || row.AddressLbStrategy])}</span>` : ""}</div>${type === "addresses" && row.HealthTasks?.length ? `<div class="gtm-monitor-chips">${row.HealthTasks.map((task) => `<span>${e(task.TemplateName || task.TemplateId)}${task.Port !== undefined ? ":" + e(task.Port) : ""}</span>`).join("")}</div>` : ""}</article>`;
+      return `<article role="button" tabindex="0" aria-label="编辑 ${e(gtmName(row))}" data-action="gtm.edit" data-kind="${type}" data-id="${e(row[ids[type]])}" data-operation="${opFor(type, "basic")}" class="gtm-node gtm-node-${type} gtm-state-${gtmStatus(row)} ${selected ? "selected" : ""}"><div class="gtm-node-title"><span class="gtm-node-name">${e(gtmName(row))}</span><span class="gtm-kind">${e(kinds[type])}</span></div><div class="gtm-node-meta">${stateBadge(row)}${row.Ttl ? `<span>TTL ${e(row.Ttl)}s</span>` : ""}</div>${row.Address ? `<div class="gtm-node-address mono">${e(row.Address)}</div>` : ""}<div class="gtm-node-meta gtm-node-policy">${["sequence", "source_nearest"].includes(parentStrategy) && row.SerialNumber !== undefined ? `<span>序 ${e(row.SerialNumber)}</span>` : ""}${parentStrategy === "weight" && row.WeightValue !== undefined ? `<span>权重 ${e(row.WeightValue)}</span>` : ""}${enums[row.AddressPoolLbStrategy || row.AddressLbStrategy] ? `<span>${e(enums[row.AddressPoolLbStrategy || row.AddressLbStrategy])}</span>` : ""}</div>${type === "addresses" && row.HealthTasks?.length ? `<div class="gtm-monitor-chips">${row.HealthTasks.map((task) => `<span>${e(task.TemplateName || displayName(knownResources().get(task.TemplateId)))}${task.Port !== undefined ? ":" + e(task.Port) : ""}</span>`).join("")}</div>` : ""}</article>`;
     };
     const branch = (pool) =>
-      `<section class="gtm-lane"><div class="gtm-pool-column">${card("pools", pool)}</div><div class="gtm-address-grid gtm-tree-addresses">${(pool.Addresses || []).map((address) => `<div class="gtm-address-leaf">${card("addresses", address)}</div>`).join("") || '<span class="help">暂无地址，点击地址池，在编辑区添加。</span>'}</div></section>`;
+      `<section class="gtm-lane"><div class="gtm-pool-column">${card("pools", pool, resource.AddressPoolLbStrategy)}</div><div class="gtm-address-grid gtm-tree-addresses">${(pool.Addresses || []).map((address) => `<div class="gtm-address-leaf">${card("addresses", address, pool.AddressLbStrategy)}</div>`).join("") || '<span class="help">暂无地址，点击地址池，在编辑区添加。</span>'}</div></section>`;
     let graph;
     if (kind === "list")
       graph = `<div class="gtm-domain-column">${card("list", resource)}</div><div class="gtm-lanes">${(resource.AddressPools || []).map(branch).join("") || '<p class="help">暂无地址池，点击接入域名，在编辑区添加。</p>'}</div>`;
@@ -902,6 +1153,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
     return `<section class="gtm-workbench"><header class="gtm-workbench-head"><div class="toolbar">${button("返回列表", "gtm.close", {}, "text")}<strong>${e(gtmName(resource))}</strong>${badge("GTM 3.0")}</div><div class="toolbar">${button("刷新画布", "gtm.canvas.refresh", {}, "text")}${button("新建地址池", "gtm.create", { kind: "pools" }, "text", "plus")}${button("新建地址", "gtm.create", { kind: "addresses" }, "text", "plus")}</div></header><div class="gtm-workspace ${editor ? "editing" : ""}"><div class="gtm-canvas" aria-label="GTM 关联画布"><div class="gtm-canvas-hint">点击节点直接编辑 · 管理关联可增删、排序 · 修改后预览确认</div><div class="gtm-graph gtm-graph-${kind}">${graph}</div></div>${inspectorShell()}</div></section>`;
   }
   function view(c) {
+    nameIndex = null;
     const tab = c.tab in kinds ? c.tab : "list";
     const tabs = `<div class="tabs">${Object.entries({
       ...kinds,
@@ -937,9 +1189,9 @@ export function createGtm({ api, ctx, render, queryResources }) {
       panel(
         kinds[tab],
         table(
-          ["名称 / ID", "类型 / 策略", "运行状态", "操作"],
+          ["名称", "类型 / 策略", "运行状态", "操作"],
           c.items.map((row) => [
-            `<strong>${e(gtmName(row))}</strong><span class="secondary mono">${e(row[ids[tab]])}</span>`,
+            `<strong>${e(displayName(row))}</strong>`,
             e(
               row.ScheduleRrType ||
                 row.AddressPoolType ||
@@ -970,8 +1222,29 @@ export function createGtm({ api, ctx, render, queryResources }) {
     );
   }
   const actions = {
+    "gtm.lines.open": async (d) => {
+      editor.values = collect(document.querySelector("#gtm-editor-form"));
+      editor.linePath = editor.linePath === d.path ? null : d.path;
+      editor.lineBranch = "";
+      drawEditor();
+      if (!editor.linePath) return;
+      try {
+        await loadOptions("lines");
+        drawLines();
+      } catch (error) {
+        const status = document.querySelector("#gtm-aux-status");
+        if (status) status.textContent = error.message;
+      }
+    },
+    "gtm.lines.branch": (d) => {
+      editor.lineBranch = d.code;
+      const input = document.querySelector(".gtm-line-search");
+      if (input) input.value = "";
+      drawLines();
+    },
     "gtm.tab": async (d) => {
       if (!mayDiscard()) return;
+      ++session;
       editor = null;
       const c = ctx();
       c.tab = d.tab;
@@ -1012,6 +1285,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
     "gtm.open": (d) => open(d.kind, d.id),
     "gtm.close": () => {
       if (!mayDiscard()) return;
+      ++session;
       editor = null;
       ctx().gtmDetail = null;
       render();
@@ -1058,6 +1332,8 @@ export function createGtm({ api, ctx, render, queryResources }) {
           ? initial(schema.items.properties, {}, false)
           : "";
       if (schema.items.type === "object") {
+        if (schema.items.properties.RequestSource)
+          item.RequestSource = ["default"];
         if (schema.items.properties.WeightValue) item.WeightValue = 1;
         if (schema.items.properties.SerialNumber)
           item.SerialNumber =

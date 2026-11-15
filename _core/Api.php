@@ -607,7 +607,7 @@ final class Api
         $account=$this->account();$this->provider($account,'aliyun');
         $gtm=new Gtm($this->cloud,$this->store,$this->security);
         if ($action==='gtm.catalog') return Gtm::catalog();
-        if ($action==='gtm.options') return $gtm->options($account,$this->text('operation',100,false) ?: null,($this->input['unified'] ?? '')==='true');
+        if ($action==='gtm.options') return $gtm->options($account,$this->text('operation',100,false) ?: null,($this->input['unified'] ?? '')==='true',$this->text('section',30,false) ?: null);
         if ($action==='gtm.history') return array_values(array_reverse(array_filter($this->store->read()['gtm_changes'] ?? [],fn ($row)=>$row['account_id']===$account['id'])));
         if ($action==='gtm.action') return $gtm->apply($account,$this->text('ticket',1000000));
         if ($action==='gtm.preview') {
@@ -620,7 +620,7 @@ final class Api
             return $gtm->preview($account,$this->text('operation',100),$parameters,$this->text('expected_token',100,false) ?: null);
         }
         $kind=$this->text('kind',30,false) ?: 'list';
-        if ($action==='gtm.resource' || $action==='gtm.detail') return $gtm->detail($account,$kind,$this->text('resource',100,false) ?: $this->text('config',100));
+        if ($action==='gtm.resource' || $action==='gtm.detail') return $gtm->detail($account,$kind,$this->text('resource',100,false) ?: $this->text('config',100),$this->text('instance_id',100,false));
         if ($action==='gtm.references') return $gtm->references($account,$kind,$this->text('resource',100));
         $kind=match($action) {'gtm.list'=>'list','gtm.pools'=>'pools','gtm.addresses'=>'addresses','gtm.monitors'=>'monitors',default=>throw new ApiError('GTM 接口无效')};
         return $gtm->listing($account,$kind,max(1,(int)($this->input['page'] ?? 1)));
