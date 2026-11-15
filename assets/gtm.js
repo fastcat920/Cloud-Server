@@ -80,8 +80,20 @@ export function gtmStateBadge(row) {
   );
 }
 const stateBadge = gtmStateBadge;
-const openButton = (kind, row, label = "配置") =>
-  button(label, "gtm.open", { kind, id: row[ids[kind]] }, "text");
+const primaryEdit = {
+  pools: "UpdateCloudGtmAddressPoolBasicConfig",
+  addresses: "UpdateCloudGtmAddress",
+  monitors: "UpdateCloudGtmMonitorTemplate",
+};
+const openButton = (kind, row) =>
+  kind === "list"
+    ? button("可视化配置", "gtm.open", { kind, id: row[ids[kind]] }, "text")
+    : button(
+        "编辑",
+        "gtm.edit",
+        { kind, id: row[ids[kind]], operation: primaryEdit[kind] },
+        "text",
+      );
 export function normalizeGtm(resource) {
   const value = structuredClone(resource);
   for (const [key, singular] of [
@@ -674,7 +686,82 @@ export function createGtm({ api, ctx, render, queryResources }) {
             ...(protocol === "https" ? ["sni"] : []),
             "followRedirect",
           ];
-    return `${editor.bindingHint ? `<div class="notice">${e(editor.bindingHint)}</div>` : ""}${!editor.spec.create && editor.spec.kind !== "list" ? '<div class="notice warn">共享资源的修改会影响其他引用，提交预览时将核对引用范围。</div>' : ""}<p id="gtm-aux-status" class="help" role="status"></p>${errors.length ? `<details class="notice warn"><summary>部分辅助资源读取失败</summary>${errors.map(e).join("<br>")}</details>` : ""}<div class="gtm-form-grid">${controls(editor.spec.fields, editor.values)}</div>${Object.hasOwn(editor.spec.fields, "ExtendInfo") && protocol !== "tcp" ? `<fieldset class="gtm-fieldset"><legend>${e(protocol?.toUpperCase() || "")} 协议参数</legend><div class="gtm-form-grid">${controls(Object.fromEntries(protocolFields.map((key) => [key, extensionSchema[key]])), editor.values.ExtendInfo || {}, ["ExtendInfo"])}</div></fieldset>` : ""}`;
+    const groups = [
+      [
+        "基础信息",
+        [
+          "Name",
+          "AddressPoolName",
+          "InstanceId",
+          "ConfigId",
+          "AddressPoolId",
+          "AddressId",
+          "TemplateId",
+          "ScheduleZoneMode",
+          "ScheduleZoneName",
+          "ScheduleHostname",
+          "ScheduleRrType",
+          "Type",
+          "AddressPoolType",
+          "Address",
+          "IpVersion",
+          "Protocol",
+          "ChargeType",
+        ],
+      ],
+      [
+        "启停与调度",
+        [
+          "EnableStatus",
+          "AvailableMode",
+          "ManualAvailableStatus",
+          "Ttl",
+          "AddressPoolLbStrategy",
+          "AddressLbStrategy",
+          "SequenceLbStrategyMode",
+        ],
+      ],
+      [
+        "健康检查",
+        [
+          "HealthJudgement",
+          "Interval",
+          "Timeout",
+          "EvaluationCount",
+          "FailureRate",
+          "HealthTasks",
+          "ExtendInfo",
+        ],
+      ],
+      ["探测节点", ["IspCityNodes"]],
+      ["关联资源", ["AddressPools", "Addresses"]],
+      ["备注", ["Remark"]],
+    ];
+    const handled = new Set(groups.flatMap(([, keys]) => keys));
+    groups.push([
+      "其他设置",
+      Object.keys(editor.spec.fields).filter((key) => !handled.has(key)),
+    ]);
+    const sections = groups
+      .map(([label, keys]) => {
+        const fields = Object.fromEntries(
+          keys
+            .filter((key) => Object.hasOwn(editor.spec.fields, key))
+            .map((key) => [key, editor.spec.fields[key]]),
+        );
+        const contents =
+          controls(fields, editor.values) +
+          (keys.includes("ExtendInfo") &&
+          Object.hasOwn(editor.spec.fields, "ExtendInfo") &&
+          protocol !== "tcp"
+            ? `<fieldset class="gtm-fieldset"><legend>${e(protocol?.toUpperCase() || "")} 协议参数</legend><div class="gtm-form-grid">${controls(Object.fromEntries(protocolFields.map((key) => [key, extensionSchema[key]])), editor.values.ExtendInfo || {}, ["ExtendInfo"])}</div></fieldset>`
+            : "");
+        return contents
+          ? `<section class="gtm-editor-section" aria-label="${e(label)}"><h4>${e(label)}</h4><div class="gtm-form-grid">${contents}</div></section>`
+          : "";
+      })
+      .join("");
+    return `${editor.bindingHint ? `<div class="notice">${e(editor.bindingHint)}</div>` : ""}${!editor.spec.create && editor.spec.kind !== "list" ? '<div class="notice warn">共享资源的修改会影响其他引用，提交预览时将核对引用范围。</div>' : ""}<p id="gtm-aux-status" class="help" role="status"></p>${errors.length ? `<details class="notice warn"><summary>部分辅助资源读取失败</summary>${errors.map(e).join("<br>")}</details>` : ""}${sections}`;
   }
   function collect(form) {
     const values = structuredClone(editor.values);
@@ -719,12 +806,31 @@ export function createGtm({ api, ctx, render, queryResources }) {
   }
   function drawEditor() {
     const currentSession = editor.session;
+    const oldBox = document.querySelector("#gtm-inspector");
+    const keepPosition = oldBox?.dataset.session === String(currentSession);
+    const inspectorScroll = keepPosition
+      ? {
+          top: oldBox.scrollTop,
+          left: oldBox.scrollLeft,
+          x: window.scrollX,
+          y: window.scrollY,
+        }
+      : null;
+    const active =
+      keepPosition && oldBox.contains(document.activeElement)
+        ? document.activeElement
+        : null;
+    const activeName = active?.name;
+    const selection =
+      active && ["text", "textarea", "search"].includes(active.type)
+        ? [active.selectionStart, active.selectionEnd]
+        : null;
     const canvas = document.querySelector(".gtm-canvas");
     const scroll = {
       left: canvas?.scrollLeft || 0,
       top: canvas?.scrollTop || 0,
     };
-    render();
+    if (!keepPosition) render();
     const restored = document.querySelector(".gtm-canvas");
     if (restored) {
       restored.scrollLeft = scroll.left;
@@ -777,7 +883,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
               )
             : "")
         : "";
-    box.innerHTML = `<form id="gtm-editor-form"><header class="gtm-inspector-head"><div><small>${e(kinds[editor.spec.kind])}</small><h3>${e(gtmName(editor.resource))}</h3></div>${button("×", "gtm.inspector.close", {}, "icon-only")}</header><div class="gtm-inspector-body"><div class="toolbar">${extra}</div><div class="dialog-error" role="alert"></div>${editorBody()}</div><footer class="gtm-inspector-foot">${button("关闭", "gtm.inspector.close", {}, "text")}<button type="submit" class="button primary">预览并提交</button></footer></form>`;
+    box.innerHTML = `<form id="gtm-editor-form"><header class="gtm-inspector-head"><div><small>${e(kinds[editor.spec.kind])}</small><h3>${e(gtmName(editor.resource))}</h3></div>${button("×", "gtm.inspector.close", {}, "icon-only")}</header><div class="gtm-inspector-body"><div class="dialog-error" role="alert"></div>${editorBody()}${extra ? `<section class="gtm-editor-section gtm-editor-actions" aria-label="资源操作"><h4>资源操作</h4><div class="toolbar">${extra}</div></section>` : ""}</div><footer class="gtm-inspector-foot">${button("关闭", "gtm.inspector.close", {}, "text")}<button type="submit" class="button primary">预览并提交</button></footer></form>`;
     const onSubmit = async (_, form) => {
       editor.values = collect(form);
       const parameters = payload();
@@ -860,7 +966,11 @@ export function createGtm({ api, ctx, render, queryResources }) {
               )
             )
               await open(root.kind, root.id);
-            else if (result.resource_id && !savedEditor.spec.delete)
+            else if (
+              result.resource_id &&
+              !savedEditor.spec.delete &&
+              savedEditor.spec.kind === "list"
+            )
               await open(savedEditor.spec.kind, result.resource_id);
             if (savedEditor.attach && result.resource_id) {
               const parent = savedEditor.attach;
@@ -897,6 +1007,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
         );
       }, 0);
     };
+    box.dataset.session = String(currentSession);
     const form = document.querySelector("#gtm-editor-form");
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -993,6 +1104,23 @@ export function createGtm({ api, ctx, render, queryResources }) {
           if (key === "IpVersion") editor.values.IspCityNodes = [];
           drawEditor();
         });
+    if (inspectorScroll) {
+      const restore = () => {
+        if (!box.isConnected || editor?.session !== currentSession) return;
+        if (activeName) {
+          const input = form.elements.namedItem(activeName);
+          input?.focus({ preventScroll: true });
+          if (selection && input?.setSelectionRange)
+            input.setSelectionRange(...selection);
+        }
+        box.scrollTop = inspectorScroll.top;
+        box.scrollLeft = inspectorScroll.left;
+        window.scrollTo(inspectorScroll.x, inspectorScroll.y);
+      };
+      restore();
+      requestAnimationFrame(restore);
+    } else if (!ctx().gtmDetail)
+      box.scrollIntoView({ block: "start", behavior: "instant" });
   }
   function formatValue(value) {
     if (value === undefined) return '<span class="help">未设置</span>';
@@ -1231,7 +1359,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
               ) +
               "</span>",
             `<div class="toolbar">${stateBadge(row)}</div>`,
-            openButton(tab, row, "可视化配置"),
+            openButton(tab, row),
           ]),
         ),
         button(

@@ -1274,7 +1274,7 @@ dialog::backdrop {
 .gtm-node {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-left: 3px solid var(--accent);
+  border-left: 6px solid var(--accent);
   border-radius: var(--radius);
   padding: 14px;
   margin-bottom: 12px;
@@ -1460,7 +1460,7 @@ dialog::backdrop {
   padding: 9px 10px;
   margin: 0;
   border-radius: 8px;
-  border-left-width: 2px;
+  border-left-width: 6px;
   font-size: 12px;
 }
 .gtm-workbench .gtm-node.selected {
@@ -1864,4 +1864,22 @@ dialog::backdrop {
 .gtm-inspector .button.text.danger,
 .gtm-inspector .button.danger {
   color: var(--danger);
+}
+
+.gtm-editor-section + .gtm-editor-section {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.gtm-editor-section h4 {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--ink);
+}
+.gtm-editor-actions .toolbar {
+  gap: 10px;
+}
+.gtm-inspector {
+  overflow-anchor: none;
+  scroll-margin-top: 16px;
 }
