@@ -574,6 +574,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
           !["sequence", "source_nearest"].includes(strategy)
         )
           return "";
+        if (key === "RequestSource" && strategy !== "source_nearest") return "";
         if (key === "RequestSource")
           return lineControl(p, Array.isArray(v) ? v : [], spec.label);
         if (spec.type === "array") {
