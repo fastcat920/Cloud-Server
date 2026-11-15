@@ -78,3 +78,21 @@ assert.deepEqual(
   ),
   [1, 2],
 );
+
+const { gtmChanges, gtmStatus } = await import('../assets/gtm.js');
+assert.deepEqual(gtmChanges({ AddressId:'a', Name:'same', Remark:'old' }, {AddressId:'a',Name:'same',Remark:'new'}), [{path:'Remark',before:'old',after:'new'}]);
+const prior = { Addresses:{Address:[{AddressId:'a',SerialNumber:1,WeightValue:2,HealthStatus:'ok'},{AddressId:'b',SerialNumber:2,WeightValue:3}]} };
+const changed = gtmChanges(prior,{Addresses:[{AddressId:'b',SerialNumber:1,WeightValue:3},{AddressId:'a',SerialNumber:2,WeightValue:2}]});
+assert.deepEqual(changed.map(v=>v.path), ['Addresses[b].SerialNumber','Addresses[a].SerialNumber']);
+assert.deepEqual(gtmChanges(prior,{Addresses:[{AddressId:'a',SerialNumber:1,WeightValue:2}]}).map(v=>v.path),['Addresses[b]（移除）']);
+assert.deepEqual(gtmChanges(prior,{Addresses:[{AddressId:'a',SerialNumber:1,WeightValue:2},{AddressId:'b',SerialNumber:2,WeightValue:3},{AddressId:'c',SerialNumber:3}]}).map(v=>v.path),['Addresses[c]（新增）']);
+assert.deepEqual(gtmChanges({ExtendInfo:'{"path":"/","code":500,"host":"old"}'},{ExtendInfo:'{"path":"/ready","code":500}'}).map(v=>v.path),['ExtendInfo.path','ExtendInfo.host']);
+assert.deepEqual(gtmChanges({Ttl:'60'},{Ttl:60},{Ttl:{type:'integer'}}),[]);
+assert.equal(gtmStatus({HealthStatus:'ok_alert',AvailableStatus:'available'}),'warn');
+assert.equal(gtmStatus({HealthStatus:'exceptional',AvailableStatus:'available'}),'bad');
+assert.equal(gtmStatus({HealthStatus:'ok'}),'good');
+assert.equal(gtmStatus({EnableStatus:'enable'}),'unknown');
+console.log('PASS: GTM changed-only previews, association identity/order, extension removals and health colors');
+assert.deepEqual(gtmChanges({IspCityNodes:[{CityCode:'1',IspCode:'a'},{CityCode:'1',IspCode:'b'}]}, {IspCityNodes:[{CityCode:'1',IspCode:'b'},{CityCode:'2',IspCode:'a'}]}).map(v=>v.path),['IspCityNodes[2/a]（新增）','IspCityNodes[1/a]（移除）']);
+assert.deepEqual(gtmChanges({HealthTasks:[{TemplateId:'t',Port:443},{TemplateId:'t',Port:8443}]}, {HealthTasks:[{TemplateId:'t',Port:443},{TemplateId:'t',Port:9443}]}).map(v=>v.path),['HealthTasks[t:9443]（新增）','HealthTasks[t:8443]（移除）']);
+assert.deepEqual(gtmChanges({HealthTasks:[{TemplateId:'t',Port:443}]}, {HealthTasks:[{TemplateId:'t'}]}, {HealthTasks:{type:'array',items:{type:'object',properties:{TemplateId:{type:'string'},Port:{type:'integer'}}}}}).map(v=>v.path),['HealthTasks[t].Port']);

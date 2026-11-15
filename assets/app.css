@@ -1773,3 +1773,32 @@ dialog::backdrop {
     max-height: calc(100vh - 350px);
   }
 }
+
+/* Health state belongs to the entire topology node. */
+.gtm-node[role="button"] {
+  cursor: pointer;
+}
+.gtm-node[role="button"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.gtm-node.gtm-state-bad {
+  background: #fff1f0;
+  border-left-color: #bd4a4a;
+}
+.gtm-node.gtm-state-warn {
+  background: #fff6e9;
+  border-left-color: #c17a24;
+}
+.gtm-node.gtm-state-good {
+  background: #eff9f2;
+  border-left-color: #398855;
+}
+.gtm-node.gtm-state-unknown {
+  background: var(--surface);
+}
+.gtm-node-meta.gtm-node-policy {
+  column-gap: 18px;
+  row-gap: 6px;
+  margin-top: 10px;
+}

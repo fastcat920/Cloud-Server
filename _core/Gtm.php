@@ -85,12 +85,15 @@ final class Gtm
         if ($kind==='monitors') return $this->all($account,'addresses',['MonitorTemplateId'=>$id]);
         return [];
     }
-    public function options(array $account, ?string $operation = null): array
+    public function options(array $account, ?string $operation = null, bool $unified = false): array
     {
         $result=['errors'=>[]];
         $needed=array_fill_keys([...array_keys(self::KINDS),'nodes','lines'],true);
         if ($operation !== null) {
             $spec=self::catalog()[$operation] ?? throw new ApiError('GTM 操作无效');
+            if ($unified && !$spec['create'] && !$spec['delete']) {
+                foreach (self::catalog() as $candidate) if ($candidate['kind']===$spec['kind'] && !$candidate['create'] && !$candidate['delete']) $spec['fields']=array_replace($spec['fields'],$candidate['fields']);
+            }
             $needed=[];
             $walk=function(array $fields,bool $nested=false) use (&$walk,&$needed,$spec): void {
                 foreach ($fields as $name=>$field) {
@@ -176,6 +179,44 @@ final class Gtm
         $ticket=['account_id'=>$account['id'],'credentials_hash'=>hash('sha256',json_encode($account['credentials'])),'operation'=>$operation,'parameters'=>$params,'before'=>$before,'token'=>$expected,'expires'=>time()+600,'nonce'=>bin2hex(random_bytes(16))];
         return ['ticket'=>$this->security->encrypt(json_encode($ticket,JSON_THROW_ON_ERROR)),'operation'=>$operation,'label'=>$spec['label'],'before'=>$before,'parameters'=>$params,'references'=>$references,'expires'=>$ticket['expires']];
     }
+    public function previewBatch(array $account,array $steps,?string $expected): array
+    {
+        if (!array_is_list($steps) || !$steps || count($steps)>8) throw new ApiError('变更步骤无效');
+        $previews=[];$target=null;
+        foreach ($steps as $step) {
+            $operation=$step['operation'] ?? '';$params=$step['parameters'] ?? null;
+            $spec=self::catalog()[$operation] ?? throw new ApiError('GTM 操作无效');
+            if ($spec['create'] || $spec['delete'] || !is_array($params)) throw new ApiError('合并编辑只允许修改同一资源');
+            $identity=[$spec['kind'],$params[self::KINDS[$spec['kind']][4]] ?? ''];
+            if ($target!==null && $target!==$identity) throw new ApiError('合并编辑必须为同一资源');
+            $target=$identity;
+            if (isset($previews[$operation])) throw new ApiError('重复的变更步骤');
+            $previews[$operation]=$this->preview($account,$operation,$params,$expected);
+        }
+        $first=reset($previews);$parameters=[];
+        foreach ($previews as $preview) $parameters=array_replace($parameters,$preview['parameters']);
+        $ticket=['account_id'=>$account['id'],'credentials_hash'=>hash('sha256',json_encode($account['credentials'])),'expires'=>time()+600,'batch'=>array_column(array_values($previews),'ticket')];
+        return ['ticket'=>$this->security->encrypt(json_encode($ticket,JSON_THROW_ON_ERROR)),'label'=>'保存配置','before'=>$first['before'],'parameters'=>$parameters,'references'=>$first['references'],'expires'=>$ticket['expires']];
+    }
+    private function applyBatch(array $account,array $tickets,mixed $lock): array
+    {
+        $results=[];$previous=null;
+        foreach ($tickets as $encrypted) {
+            $child=json_decode($this->security->decrypt($encrypted),true,64,JSON_THROW_ON_ERROR);
+            if ($previous!==null) {
+                $child['before']=$previous['resource'];$child['token']=self::fingerprint($previous['resource']);
+                $encrypted=$this->security->encrypt(json_encode($child,JSON_THROW_ON_ERROR));
+            }
+            try { $result=$this->apply($account,$encrypted,$lock); }
+            catch (\Throwable $error) {
+                if (!$results) throw $error;
+                return $previous+['steps'=>$results,'partial'=>true,'error'=>$error->getMessage()];
+            }
+            $results[]=$result;$previous=$result;
+            if ($result['verification']!=='confirmed') return $result+['steps'=>$results,'partial'=>count($results)<count($tickets)];
+        }
+        return $previous+['steps'=>$results];
+    }
     private function relationships(array $account,array $spec,array $params,array $before): void
     {
         foreach (['AddressPools'=>['AddressPoolId','pools'],'Addresses'=>['AddressId','addresses']] as $field=>[$idField,$kind]) {
@@ -213,14 +254,18 @@ final class Gtm
         }
         if (count($ports)>5) throw new ApiError('单地址最多配置五个探测端口');
     }
-    public function apply(array $account,string $encrypted): array
+    public function apply(array $account,string $encrypted,mixed $heldLock=null): array
     {
         $ticket=json_decode($this->security->decrypt($encrypted),true,64,JSON_THROW_ON_ERROR);
         if (($ticket['account_id'] ?? null)!==$account['id'] || ($ticket['expires'] ?? 0)<time() || !hash_equals($ticket['credentials_hash'] ?? '',hash('sha256',json_encode($account['credentials'])))) throw new ApiError('变更预览已过期或账号已变化，请重新预览',409);
-        $path=$this->store->directory().'/gtm-lock-'.$account['id'].'.php';$lock=fopen($path,'c+');
-        if (!$lock || !flock($lock,LOCK_EX|LOCK_NB)) { if (is_resource($lock)) fclose($lock);throw new ApiError('该账号有 GTM 操作进行中，请稍后重试',409); }
-        if (fstat($lock)['size']===0) fwrite($lock,Store::GUARD);chmod($path,0600);
+        $lock=$heldLock;
+        if ($lock===null) {
+            $path=$this->store->directory().'/gtm-lock-'.$account['id'].'.php';$lock=fopen($path,'c+');
+            if (!$lock || !flock($lock,LOCK_EX|LOCK_NB)) { if (is_resource($lock)) fclose($lock);throw new ApiError('该账号有 GTM 操作进行中，请稍后重试',409); }
+            if (fstat($lock)['size']===0) fwrite($lock,Store::GUARD);chmod($path,0600);
+        }
         try {
+            if (isset($ticket['batch'])) return $this->applyBatch($account,$ticket['batch'],$lock);
             foreach ($this->store->read()['gtm_changes'] ?? [] as $change) if ($change['nonce']===$ticket['nonce'] && $change['status']==='success') return $change['result'];
             $operation=$ticket['operation'];$spec=self::catalog()[$operation];$params=$ticket['parameters'];$kind=$spec['kind'];$idField=self::KINDS[$kind][4];$id=$params[$idField] ?? '';
             if (!$spec['create']) {
@@ -248,7 +293,7 @@ final class Gtm
             } catch (\Throwable $error) {
                 $change['status']='failed';$change['error']=$error instanceof \RuntimeException?$error->getMessage():'GTM 操作失败';$this->record($change);throw $error;
             }
-        } finally { fclose($lock); }
+        } finally { if ($heldLock===null) fclose($lock); }
     }
     private function matches(string $operation,array $params,array $resource): bool
     {

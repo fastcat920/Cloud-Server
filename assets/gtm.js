@@ -105,6 +105,122 @@ export function normalizeGtm(resource) {
   }
   return value;
 }
+// Compare submitted fields only; match associations by identity rather than array position.
+export function gtmChanges(before, parameters, fields = {}, deleting = false) {
+  before = normalizeGtm(before || {});
+  parameters = normalizeGtm(parameters || {});
+  const result = [];
+  const identifiers = new Set([
+    "InstanceId",
+    "ConfigId",
+    "AddressId",
+    "AddressPoolId",
+    "TemplateId",
+  ]);
+  if (deleting)
+    return [{ path: "删除资源", before: gtmName(before), after: undefined }];
+  const walk = (old, next, path, schema) => {
+    if (Array.isArray(next)) {
+      const key = ["AddressPoolId", "AddressId", "TemplateId", "CityCode"].find(
+        (k) =>
+          next.some((v) => v && typeof v === "object" && k in v) ||
+          (old || []).some?.((v) => v && typeof v === "object" && k in v),
+      );
+      if (key) {
+        const duplicateTemplates =
+          key === "TemplateId" &&
+          [next, Array.isArray(old) ? old : []].some(
+            (items) =>
+              new Set(items.map((v) => v.TemplateId)).size < items.length,
+          );
+        const identity = (v) =>
+          key === "CityCode"
+            ? `${v.CityCode}/${v.IspCode}`
+            : duplicateTemplates
+              ? `${v.TemplateId}:${v.Port ?? "ping"}`
+              : String(v[key]);
+        const previous = new Map(
+          (Array.isArray(old) ? old : []).map((v) => [identity(v), v]),
+        );
+        for (const item of next) {
+          const id = identity(item),
+            prior = previous.get(id),
+            label = `${path}[${id}]`;
+          if (!prior)
+            result.push({
+              path: label + "（新增）",
+              before: undefined,
+              after: item,
+            });
+          else walk(prior, item, label, schema?.items);
+          previous.delete(id);
+        }
+        for (const [id, item] of previous)
+          result.push({
+            path: `${path}[${id}]（移除）`,
+            before: schema?.items ? project(item, schema.items) : { [key]: id },
+            after: undefined,
+          });
+      } else if (JSON.stringify(old) !== JSON.stringify(next)) {
+        const prior = Array.isArray(old) ? old : [];
+        const removed = prior.filter((v) => !next.includes(v)),
+          added = next.filter((v) => !prior.includes(v));
+        if (removed.length)
+          result.push({
+            path: path + "（移除）",
+            before: removed,
+            after: undefined,
+          });
+        if (added.length)
+          result.push({
+            path: path + "（新增）",
+            before: undefined,
+            after: added,
+          });
+        if (!removed.length && !added.length && next.length)
+          result.push({ path: path + "（顺序）", before: prior, after: next });
+      }
+      return;
+    }
+    if (next && typeof next === "object") {
+      for (const [key, value] of Object.entries(next))
+        walk(old?.[key], value, path + "." + key, schema?.properties?.[key]);
+      // Protocol settings are full replacements, so omitted old keys are actual removals.
+      if (path === "ExtendInfo" || schema?.type === "object")
+        for (const key of Object.keys(old || {}))
+          if (
+            !(key in next) &&
+            (path === "ExtendInfo" || schema?.properties?.[key])
+          )
+            result.push({
+              path: path + "." + key,
+              before: old[key],
+              after: undefined,
+            });
+      return;
+    }
+    const same =
+      schema?.type === "integer" && old !== undefined
+        ? Number(old) === next
+        : old === next;
+    if (!same) result.push({ path, before: old, after: next });
+  };
+  for (const [key, value] of Object.entries(parameters))
+    if (!identifiers.has(key)) walk(before[key], value, key, fields[key]);
+  return result;
+}
+export function gtmStatus(row) {
+  if (
+    row.HealthStatus === "exceptional" ||
+    row.AvailableStatus === "unavailable" ||
+    row.EnableStatus === "disable"
+  )
+    return "bad";
+  if (row.HealthStatus === "ok_alert") return "warn";
+  if (row.HealthStatus === "ok" || row.AvailableStatus === "available")
+    return "good";
+  return "unknown";
+}
 export function moveGtmRow(items, from, to) {
   const result = structuredClone(items);
   if (from < 0 || to < 0 || from >= result.length || to >= result.length)
@@ -124,6 +240,7 @@ export function moveGtmRow(items, from, to) {
 }
 function initial(fields, resource, create) {
   const defaults = {
+    Remark: "",
     EnableStatus: create ? "disable" : "enable",
     AvailableMode: "auto",
     HealthJudgement: "any_ok",
@@ -179,6 +296,16 @@ const extensionSchema = {
     enum: [10, 30, 40, 80, 90, 100],
   },
 };
+if (typeof document !== "undefined")
+  document.addEventListener("keydown", (event) => {
+    if (
+      event.target.matches?.('.gtm-node[role="button"]') &&
+      ["Enter", " "].includes(event.key)
+    ) {
+      event.preventDefault();
+      event.target.click();
+    }
+  });
 export function createGtm({ api, ctx, render, queryResources }) {
   let editor = null,
     session = 0;
@@ -187,14 +314,16 @@ export function createGtm({ api, ctx, render, queryResources }) {
     c.gtmCatalog ??= await api("gtm.catalog", { account_id: c.account });
     return c.gtmCatalog;
   }
-  async function options(operation) {
+  async function options(operation, unified = false) {
     const c = ctx();
     c.gtmOptions ??= {};
-    c.gtmOptions[operation] ??= await api("gtm.options", {
+    const key = operation + (unified ? ":all" : "");
+    c.gtmOptions[key] ??= await api("gtm.options", {
       account_id: c.account,
       operation,
+      unified,
     });
-    return c.gtmOptions[operation];
+    return c.gtmOptions[key];
   }
   function choices(key, spec, value) {
     const o = editor.options;
@@ -416,69 +545,103 @@ export function createGtm({ api, ctx, render, queryResources }) {
     }
     const box = document.querySelector("#gtm-inspector");
     if (!box) return;
-    const operations = Object.entries(ctx().gtmCatalog || {}).filter(
-      ([, op]) => op.kind === editor.spec.kind && !op.create,
-    );
-    box.innerHTML = `<form id="gtm-editor-form"><header class="gtm-inspector-head"><div><small>${e(kinds[editor.spec.kind])}</small><h3>${e(gtmName(editor.resource))}</h3></div>${button("×", "gtm.inspector.close", {}, "icon-only")}</header><div class="gtm-inspector-body">${
-      !editor.spec.create
-        ? select(
-            "operation",
-            "操作",
-            operations.map(([value, op]) => ({
-              value,
-              label:
-                op.delete && op.kind !== "list" ? "全局" + op.label : op.label,
-            })),
-            editor.operation,
-          )
-        : `<h4>${e(editor.spec.label)}</h4>`
-    }<div class="dialog-error" role="alert"></div>${editorBody()}</div><footer class="gtm-inspector-foot">${button("关闭", "gtm.inspector.close", {}, "text")}<button type="submit" class="button primary">预览并提交</button></footer></form>`;
+    const extra =
+      !editor.spec.create && !editor.spec.delete
+        ? (editor.resource.HealthTasks || [])
+            .map((task) =>
+              button(
+                "编辑探测模板 " + (task.TemplateName || task.TemplateId),
+                "gtm.edit",
+                {
+                  kind: "monitors",
+                  id: task.TemplateId,
+                  operation: "UpdateCloudGtmMonitorTemplate",
+                },
+                "text",
+              ),
+            )
+            .join("") +
+          editor.operations
+            .filter(([, op]) => op.delete)
+            .map(([operation, op]) =>
+              button(
+                op.label,
+                "gtm.edit",
+                { kind: op.kind, id: editor.resource[ids[op.kind]], operation },
+                "danger",
+              ),
+            )
+            .join("") +
+          (["list", "pools"].includes(editor.spec.kind)
+            ? button(
+                editor.spec.kind === "list" ? "新增地址池" : "新增地址",
+                "gtm.create",
+                {
+                  kind: editor.spec.kind === "list" ? "pools" : "addresses",
+                  parentkind: editor.spec.kind,
+                  parentid: editor.resource[ids[editor.spec.kind]],
+                  parenttype:
+                    editor.resource.ScheduleRrType ||
+                    editor.resource.AddressPoolType,
+                },
+                "text",
+              )
+            : "")
+        : "";
+    box.innerHTML = `<form id="gtm-editor-form"><header class="gtm-inspector-head"><div><small>${e(kinds[editor.spec.kind])}</small><h3>${e(gtmName(editor.resource))}</h3></div>${button("×", "gtm.inspector.close", {}, "icon-only")}</header><div class="gtm-inspector-body"><div class="toolbar">${extra}</div><div class="dialog-error" role="alert"></div>${editorBody()}</div><footer class="gtm-inspector-foot">${button("关闭", "gtm.inspector.close", {}, "text")}<button type="submit" class="button primary">预览并提交</button></footer></form>`;
     const onSubmit = async (_, form) => {
       editor.values = collect(form);
+      const parameters = payload();
+      let request = { operation: editor.operation, parameters };
+      if (!editor.spec.create && !editor.spec.delete) {
+        const steps = editor.operations
+          .filter(([, op]) => !op.delete)
+          .map(([operation, op]) => {
+            const parametersForOperation = Object.fromEntries(
+              Object.keys(op.fields)
+                .filter((key) => Object.hasOwn(parameters, key))
+                .map((key) => [key, parameters[key]]),
+            );
+            return {
+              operation,
+              parameters: parametersForOperation,
+              changes: gtmChanges(
+                editor.baseline,
+                parametersForOperation,
+                op.fields,
+              ),
+            };
+          })
+          .filter((step) => step.changes.length)
+          .map(({ operation, parameters }) => ({ operation, parameters }));
+        if (!steps.length) throw new Error("没有修改内容，无需提交");
+        request = { steps };
+      }
       const preview = await api("gtm.preview", {
         account_id: editor.account,
-        operation: editor.operation,
-        parameters: payload(),
         expected_token: editor.token,
+        ...request,
       });
       const savedEditor = editor;
       setTimeout(() => {
         if (editor?.session !== currentSession) return;
-        const changes = Object.entries(preview.parameters).filter(
-          ([key]) =>
-            ![
-              "InstanceId",
-              "ConfigId",
-              "AddressId",
-              "AddressPoolId",
-              "TemplateId",
-            ].includes(key),
+        const changes = gtmChanges(
+          preview.before,
+          preview.parameters,
+          savedEditor.spec.fields,
+          savedEditor.spec.delete,
         );
         modal(
           "确认 GTM 变更",
           `将对「${gtmName(savedEditor.resource)}」执行「${preview.label}」。${preview.references.length ? `影响 ${preview.references.length} 项引用资源。` : ""}DNS 缓存可能使解析结果延后更新。`,
-          (preview.references.length
-            ? table(
-                ["受影响的引用资源", "ID"],
-                preview.references.map((row) => [
-                  e(gtmName(row)),
-                  e(
-                    row.ConfigId ||
-                      row.AddressPoolId ||
-                      row.AddressId ||
-                      row.TemplateId,
-                  ),
-                ]),
-              )
-            : "") +
-            table(
-              ["参数", "原值", "提交值"],
-              changes.map(([key, value]) => [
-                e(savedEditor.spec.fields[key]?.label || key),
-                formatValue(normalizeGtm(preview.before)[key]),
-                formatValue(key === "ExtendInfo" ? JSON.parse(value) : value),
-              ]),
-            ) +
+          table(
+            ["参数", "原值", "提交值"],
+            changes.map((change) => [
+              e(change.path),
+              formatValue(change.before),
+              formatValue(change.after),
+            ]),
+          ) +
             `<div class="toolbar">${button("返回编辑", "gtm.back", {}, "text")}</div>`,
           async () => {
             const result = await api("gtm.action", {
@@ -488,9 +651,12 @@ export function createGtm({ api, ctx, render, queryResources }) {
             const c = ctx();
             delete c.gtmOptions;
             toast(
-              result.verification === "confirmed"
-                ? "阿里云已确认配置更新"
-                : "请求已提交，请刷新查询云端状态",
+              result.partial
+                ? "部分变更已提交，后续步骤已停止：" +
+                    (result.error || "等待云端确认，请刷新后核对")
+                : result.verification === "confirmed"
+                  ? "阿里云已确认配置更新"
+                  : "请求已提交，请刷新查询云端状态",
             );
             const root = savedEditor.root;
             editor = null;
@@ -555,23 +721,6 @@ export function createGtm({ api, ctx, render, queryResources }) {
         btn.disabled = false;
       }
     });
-    form.elements.operation?.addEventListener("change", async () => {
-      const previous = editor.operation;
-      try {
-        await edit(
-          form.elements.operation.value,
-          editor.spec.kind,
-          editor.resource[ids[editor.spec.kind]],
-        );
-        if (form.isConnected && editor?.operation === previous)
-          form.elements.operation.value = previous;
-      } catch (error) {
-        if (form.isConnected) {
-          form.elements.operation.value = previous;
-          form.querySelector(".dialog-error").textContent = error.message;
-        }
-      }
-    });
     for (const key of ["Protocol", "IpVersion"])
       form
         .querySelector(`[data-gtm-path='["${key}"]'] select`)
@@ -615,7 +764,23 @@ export function createGtm({ api, ctx, render, queryResources }) {
     const c = ctx(),
       selectedAccount = c.account;
     if (!c.account) throw new Error("请先选择阿里云账号");
-    const op = (await catalog())[operation];
+    const allOperations = await catalog();
+    const sourceOp = allOperations[operation];
+    const operations = Object.entries(allOperations).filter(
+      ([, spec]) => spec.kind === kind && !spec.create,
+    );
+    const op =
+      sourceOp && !sourceOp.create && !sourceOp.delete
+        ? {
+            ...sourceOp,
+            fields: Object.assign(
+              {},
+              ...operations
+                .filter(([, spec]) => !spec.delete)
+                .map(([, spec]) => spec.fields),
+            ),
+          }
+        : sourceOp;
     if (!op) throw new Error("不支持此操作");
     const detail = op.create
       ? { resource: {}, token: null }
@@ -632,7 +797,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
           resource: id,
         });
     const resource = normalizeGtm(detail.resource),
-      opts = await options(operation);
+      opts = await options(operation, !op.create && !op.delete);
     if (requested !== session || selectedAccount !== ctx().account) return;
     editor = {
       session: requested,
@@ -645,6 +810,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
         : null,
       account: c.account,
       operation,
+      operations,
       spec: op,
       resource,
       token: detail.token,
@@ -718,24 +884,17 @@ export function createGtm({ api, ctx, render, queryResources }) {
         },
         monitors: { basic: "UpdateCloudGtmMonitorTemplate" },
       })[type][mode];
-    const action = (type, row, mode, label) =>
-      button(
-        label,
-        "gtm.edit",
-        { kind: type, id: row[ids[type]], operation: opFor(type, mode) },
-        "text",
-      );
     const card = (type, row) => {
       const selected =
         editor?.spec.kind === type &&
         editor.resource[ids[type]] === row[ids[type]];
-      return `<article class="gtm-node gtm-node-${type} ${selected ? "selected" : ""}"><div class="gtm-node-title"><button type="button" class="gtm-node-name" data-action="gtm.edit" data-kind="${type}" data-id="${e(row[ids[type]])}" data-operation="${opFor(type, "basic")}">${e(gtmName(row))}</button><span class="gtm-kind">${e(kinds[type])}</span></div><div class="gtm-node-meta">${stateBadge(row)}${row.Ttl ? `<span>TTL ${e(row.Ttl)}s</span>` : ""}</div>${row.Address ? `<div class="gtm-node-address mono">${e(row.Address)}</div>` : ""}<div class="gtm-node-meta">${row.SerialNumber !== undefined ? `<span>序 ${e(row.SerialNumber)}</span>` : ""}${row.WeightValue !== undefined ? `<span>权重 ${e(row.WeightValue)}</span>` : ""}${enums[row.AddressPoolLbStrategy || row.AddressLbStrategy] ? `<span>${e(enums[row.AddressPoolLbStrategy || row.AddressLbStrategy])}</span>` : ""}</div><div class="gtm-node-actions">${action(type, row, "basic", "配置")}${opFor(type, "policy") ? action(type, row, "policy", "策略") : ""}${opFor(type, "link") ? action(type, row, "link", type === "addresses" ? "健康检查" : "管理关联") : ""}${type === "list" || type === "pools" ? button(type === "list" ? "新增地址池" : "新增地址", "gtm.create", { kind: type === "list" ? "pools" : "addresses", parentkind: type, parentid: row[ids[type]], parenttype: row.ScheduleRrType || row.AddressPoolType }, "text") : ""}</div>${type === "addresses" && row.HealthTasks?.length ? `<div class="gtm-monitor-chips">${row.HealthTasks.map((task) => action("monitors", { TemplateId: task.TemplateId, Name: task.TemplateName }, "basic", (task.TemplateName || task.TemplateId) + (task.Port !== undefined ? ":" + task.Port : ""))).join("")}</div>` : ""}</article>`;
+      return `<article role="button" tabindex="0" aria-label="编辑 ${e(gtmName(row))}" data-action="gtm.edit" data-kind="${type}" data-id="${e(row[ids[type]])}" data-operation="${opFor(type, "basic")}" class="gtm-node gtm-node-${type} gtm-state-${gtmStatus(row)} ${selected ? "selected" : ""}"><div class="gtm-node-title"><span class="gtm-node-name">${e(gtmName(row))}</span><span class="gtm-kind">${e(kinds[type])}</span></div><div class="gtm-node-meta">${stateBadge(row)}${row.Ttl ? `<span>TTL ${e(row.Ttl)}s</span>` : ""}</div>${row.Address ? `<div class="gtm-node-address mono">${e(row.Address)}</div>` : ""}<div class="gtm-node-meta gtm-node-policy">${row.SerialNumber !== undefined ? `<span>序 ${e(row.SerialNumber)}</span>` : ""}${row.WeightValue !== undefined ? `<span>权重 ${e(row.WeightValue)}</span>` : ""}${enums[row.AddressPoolLbStrategy || row.AddressLbStrategy] ? `<span>${e(enums[row.AddressPoolLbStrategy || row.AddressLbStrategy])}</span>` : ""}</div>${type === "addresses" && row.HealthTasks?.length ? `<div class="gtm-monitor-chips">${row.HealthTasks.map((task) => `<span>${e(task.TemplateName || task.TemplateId)}${task.Port !== undefined ? ":" + e(task.Port) : ""}</span>`).join("")}</div>` : ""}</article>`;
     };
     const branch = (pool) =>
-      `<section class="gtm-lane"><div class="gtm-pool-column">${card("pools", pool)}</div><div class="gtm-address-grid gtm-tree-addresses">${(pool.Addresses || []).map((address) => `<div class="gtm-address-leaf">${card("addresses", address)}</div>`).join("") || '<span class="help">暂无地址，点击地址池的“管理关联”添加。</span>'}</div></section>`;
+      `<section class="gtm-lane"><div class="gtm-pool-column">${card("pools", pool)}</div><div class="gtm-address-grid gtm-tree-addresses">${(pool.Addresses || []).map((address) => `<div class="gtm-address-leaf">${card("addresses", address)}</div>`).join("") || '<span class="help">暂无地址，点击地址池，在编辑区添加。</span>'}</div></section>`;
     let graph;
     if (kind === "list")
-      graph = `<div class="gtm-domain-column">${card("list", resource)}</div><div class="gtm-lanes">${(resource.AddressPools || []).map(branch).join("") || '<p class="help">暂无地址池，点击接入域名的“管理关联”添加。</p>'}</div>`;
+      graph = `<div class="gtm-domain-column">${card("list", resource)}</div><div class="gtm-lanes">${(resource.AddressPools || []).map(branch).join("") || '<p class="help">暂无地址池，点击接入域名，在编辑区添加。</p>'}</div>`;
     else if (kind === "pools") graph = branch(resource);
     else if (kind === "addresses")
       graph = `<div class="gtm-address-grid">${card("addresses", resource)}</div>`;
@@ -828,16 +987,22 @@ export function createGtm({ api, ctx, render, queryResources }) {
     },
     "gtm.change": (d) => {
       const change = ctx().gtmHistory[Number(d.index)];
-      const before = normalizeGtm(change.before);
+      const spec = ctx().gtmCatalog?.[change.operation];
+      const changes = gtmChanges(
+        change.before,
+        change.parameters,
+        spec?.fields,
+        spec?.delete || change.operation.startsWith("Delete"),
+      );
       modal(
         "GTM 变更详情",
         change.error || `请求编号：${change.result?.request_id || "—"}`,
         table(
           ["字段", "变更前", "提交值"],
-          Object.entries(change.parameters).map(([key, value]) => [
-            e(key),
-            formatValue(before[key]),
-            formatValue(key === "ExtendInfo" ? JSON.parse(value) : value),
+          changes.map((item) => [
+            e(item.path),
+            formatValue(item.before),
+            formatValue(item.after),
           ]),
         ),
         async () => {},

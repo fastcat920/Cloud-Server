@@ -51,6 +51,15 @@ try {
  Http::$transport=function($method,$url,$headers,$body)use($originalTransport,&$writes){if($method==='POST'){++$writes;throw new RuntimeException('network timeout (28)');}return $originalTransport($method,$url,$headers,$body);};
  try{$gtm->apply($account,$preview['ticket']);throw new LogicException('Timeout not reported');}catch(RuntimeException){}
  verifyGtm($writes===1,'Never auto-retry mutation');Http::$transport=$originalTransport;
+ $d=$gtm->detail($account,'addresses','addr-1');
+ $batch=$gtm->previewBatch($account,[['operation'=>'UpdateCloudGtmAddressRemark','parameters'=>['AddressId'=>'addr-1','Remark'=>'batch remark']],['operation'=>'UpdateCloudGtmAddressEnableStatus','parameters'=>['AddressId'=>'addr-1','EnableStatus'=>'disable']]],$d['token']);
+ $saved=$gtm->apply($account,$batch['ticket']);verifyGtm($saved['verification']==='confirmed' && count($saved['steps'])===2,'Unified edit must apply all steps with updated conflict tokens');
+ verifyGtm($gtm->apply($account,$batch['ticket'])===$saved,'Unified edit replay must not repeat writes');
+ $d=$gtm->detail($account,'addresses','addr-1');verifyGtm($d['resource']['Remark']==='batch remark' && $d['resource']['EnableStatus']==='disable','Unified edit persisted');
+ try{$gtm->previewBatch($account,[['operation'=>'DeleteCloudGtmAddress','parameters'=>['AddressId'=>'addr-1']]],$d['token']);throw new LogicException('Batch delete accepted');}catch(ApiError){}
+ $batch=$gtm->previewBatch($account,[['operation'=>'UpdateCloudGtmAddressRemark','parameters'=>['AddressId'=>'addr-1','Remark'=>'partial remark']],['operation'=>'UpdateCloudGtmAddressEnableStatus','parameters'=>['AddressId'=>'addr-1','EnableStatus'=>'enable']]],$d['token']);
+ Http::$transport=function($method,$url,$headers,$body)use($originalTransport){parse_str($body??'',$q);if(($q['Action']??'')==='UpdateCloudGtmAddressEnableStatus')throw new RuntimeException('simulated write failure');return $originalTransport($method,$url,$headers,$body);};
+ $partial=$gtm->apply($account,$batch['ticket']);verifyGtm($partial['partial'] && count($partial['steps'])===1 && str_contains($partial['error'],'simulated'),'Partial failure must stop and report completed steps');Http::$transport=$originalTransport;
  echo "PASS: GTM topology, selectors, JSON RPC bindings, create/update/delete, references, stale edits, preview integrity, idempotency and verification\n";
 } finally {
  Http::$transport=null;
