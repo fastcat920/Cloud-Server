@@ -85,7 +85,7 @@ final class Cloud
         }
         return array_map(fn ($v) => $this->security->decrypt($v), $account['credentials']);
     }
-    public function rpc(array $account, string $action, array $params = [], string $region = '', string $service = 'ecs', string $method = 'GET', int $timeout = 60, bool $reuse = false): array
+    public function rpc(array $account, string $action, array $params = [], string $region = '', string $service = 'ecs', string $method = 'GET', int $timeout = 60, bool $reuse = false, bool $queryPost = false): array
     {
         $params = array_diff_key($params, array_fill_keys(['Action','Format','Version','AccessKeyId','PublicKey','SecurityToken','Signature','SignatureMethod','SignatureVersion','SignatureNonce','Timestamp'], true));
         $keys = $this->credentials($account);
@@ -118,7 +118,10 @@ final class Cloud
             $canonical = http_build_query($flat, '', '&', PHP_QUERY_RFC3986);
             $flat['Signature'] = base64_encode(hash_hmac('sha1', $method.'&%2F&'.rawurlencode($canonical), $secret.'&', true));
             $encoded = http_build_query($flat, '', '&', PHP_QUERY_RFC3986);
-            $data = $method === 'POST' ? Http::json('POST', 'https://'.$host.'/', ['Content-Type'=>'application/x-www-form-urlencoded'], $encoded, $timeout, $reuse) : Http::json('GET', 'https://'.$host.'/?'.$encoded, timeout:$timeout,reuse:$reuse);
+            // The generated GTM SDK places RPC parameters in the query even for POST.
+            $data = $method === 'POST'
+                ? Http::json('POST', 'https://'.$host.'/'.($queryPost?'?'.$encoded:''), ['Content-Type'=>'application/x-www-form-urlencoded'], $queryPost?'':$encoded, $timeout, $reuse)
+                : Http::json('GET', 'https://'.$host.'/?'.$encoded, timeout:$timeout,reuse:$reuse);
             if (isset($data['Code']) && !in_array((string)$data['Code'], ['200','Success'], true)) {
                 throw new CloudResponseError($data['Code'].'：'.($data['Message'] ?? '请求失败'),(string)$data['Code'],(string)($data['RequestId'] ?? ''),200);
             }

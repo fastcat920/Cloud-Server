@@ -17,7 +17,7 @@ CloudDesk\Http::$transport = function ($method, $url, $headers, $body) {
     $host = parse_url($url, PHP_URL_HOST);
     $path = parse_url($url, PHP_URL_PATH);
     parse_str(parse_url($url, PHP_URL_QUERY) ?? '', $query);
-    if ($method==='POST' && ($headers['Content-Type'] ?? '')==='application/x-www-form-urlencoded') parse_str($body,$query);
+    if ($method==='POST' && $body!=='' && ($headers['Content-Type'] ?? '')==='application/x-www-form-urlencoded') parse_str($body,$query);
     if (str_contains($host, 'ecs.aliyuncs.com')) {
         return ['status' => 200,'body' => json_encode(['RequestId' => 'test','TotalCount' => 1,'Instances' => ['Instance' => [['InstanceId' => 'i-native-test','InstanceName' => 'Native test','Status' => 'Running','Cpu' => 2,'Memory' => 4096]]]])];
     }

@@ -90,6 +90,7 @@ export function errorDetails(details) {
     http_status: "云端 HTTP 状态",
     original_message: "原始错误",
     request_method: "请求方式",
+    parameter_location: "参数发送位置",
     request_parameters: "实际提交的业务参数（JSON 字段保留发送格式）",
     address_context: "修改前地址配置",
   };

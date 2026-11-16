@@ -46,7 +46,7 @@ final class Gtm
         for($attempt=0;$attempt<($read?2:1);$attempt++) {
             try {
                 $started=hrtime(true);++$this->cloudCalls;
-                try { return $this->cloud->rpc($account,$operation,['AcceptLanguage'=>'zh-CN']+$params,service:'alidns',method:$read?'GET':'POST',timeout:$read?15:60,reuse:true); }
+                try { return $this->cloud->rpc($account,$operation,['AcceptLanguage'=>'zh-CN']+$params,service:'alidns',method:$read?'GET':'POST',timeout:$read?15:60,reuse:true,queryPost:true); }
                 finally { $this->cloudMs+=(hrtime(true)-$started)/1000000; }
             } catch (\RuntimeException $error) {
                 $transient=$error instanceof CloudResponseError ? in_array($error->httpStatus,[502,503,504],true) : preg_match('/[（(]28[）)]|HTTP 50[234]/',$error->getMessage())===1;
@@ -57,6 +57,7 @@ final class Gtm
                 $submitted=array_intersect_key($params,$fields);
                 if ($fields) $translated=new GtmRequestError($translated->getMessage(),$translated->details+[
                     'request_method'=>'POST',
+                    'parameter_location'=>'URL 查询参数（与官方 SDK 一致）',
                     'request_parameters'=>json_encode($submitted,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR),
                 ],$translated);
                 throw $translated;

@@ -8,8 +8,9 @@ function verifyGtm(bool $ok,string $why): void { if(!$ok)throw new RuntimeExcept
 $directory=sys_get_temp_dir().'/gtm-test-'.bin2hex(random_bytes(8));putenv('CLOUD_DESK_DATA='.$directory);
 $store=new Store($directory);$security=new Security($store);$cloud=new Cloud($security);$gtm=new Gtm($cloud,$store,$security);
 $account=['id'=>1,'provider'=>'aliyun','enabled'=>true,'credentials'=>['key'=>$security->encrypt('fake'),'secret'=>$security->encrypt('fake')]];
-Http::$transport=function($method,$url,$headers,$body){parse_str($method==='POST'?$body:(parse_url($url,PHP_URL_QUERY)??''),$query);
+Http::$transport=function($method,$url,$headers,$body){parse_str(parse_url($url,PHP_URL_QUERY)??'',$query);
  if($method==='POST') {
+  verifyGtm($body==='' && isset($query['Action'],$query['Signature']),'GTM must match official SDK query-only POST transport');
   verifyGtm(($headers['Content-Type']??'')==='application/x-www-form-urlencoded','GTM mutation form content type');
   $signature=$query['Signature'];$unsigned=$query;unset($unsigned['Signature']);ksort($unsigned);
   $expected=base64_encode(hash_hmac('sha1','POST&%2F&'.rawurlencode(http_build_query($unsigned,'','&',PHP_QUERY_RFC3986)),'fake&',true));
@@ -61,7 +62,7 @@ try {
  $d=$gtm->detail($account,'addresses','addr-1');verifyGtm($d['resource']['Remark']==='batch remark' && $d['resource']['EnableStatus']==='disable','Unified edit persisted');
  try{$gtm->previewBatch($account,[['operation'=>'DeleteCloudGtmAddress','parameters'=>['AddressId'=>'addr-1']]],$d['token']);throw new LogicException('Batch delete accepted');}catch(ApiError){}
  $batch=$gtm->previewBatch($account,[['operation'=>'UpdateCloudGtmAddressRemark','parameters'=>['AddressId'=>'addr-1','Remark'=>'partial remark']],['operation'=>'UpdateCloudGtmAddressEnableStatus','parameters'=>['AddressId'=>'addr-1','EnableStatus'=>'enable']]],$d['token']);
- Http::$transport=function($method,$url,$headers,$body)use($originalTransport){parse_str($body??'',$q);if(($q['Action']??'')==='UpdateCloudGtmAddressEnableStatus')throw new RuntimeException('simulated write failure');return $originalTransport($method,$url,$headers,$body);};
+ Http::$transport=function($method,$url,$headers,$body)use($originalTransport){parse_str(parse_url($url,PHP_URL_QUERY)??'',$q);if(($q['Action']??'')==='UpdateCloudGtmAddressEnableStatus')throw new RuntimeException('simulated write failure');return $originalTransport($method,$url,$headers,$body);};
  $partial=$gtm->apply($account,$batch['ticket']);verifyGtm($partial['partial'] && count($partial['steps'])===1 && str_contains($partial['error_details']['original_message'] ?? '', 'simulated'),'Partial failure must stop and report completed steps');Http::$transport=$originalTransport;
  $calls=function()use($directory){$state=json_decode(substr(file_get_contents($directory.'/gtm-fixture.php'),strlen(Store::GUARD)),true);return $state['calls'];};
  $start=count($calls());$freshGtm=new Gtm($cloud,$store,$security);$freshGtm->detail($account,'list','config-1','gtm-1');
@@ -88,7 +89,7 @@ try {
  $d=$gtm->detail($account,'addresses','addr-1');
  $paired=$gtm->preview($account,'UpdateCloudGtmAddress',['AddressId'=>'addr-1','Address'=>'130.12.18.223','HealthTasks'=>[['TemplateId'=>'mtp-1','Port'=>30001]]],$d['token']);
  verifyGtm($paired['parameters']['HealthJudgement']===$d['resource']['HealthJudgement'],'Health task changes must freeze the preserved health judgement into preview');
- Http::$transport=function($method,$url,$headers,$body)use($originalTransport){parse_str($body??'',$q);if(($q['Action']??'')==='UpdateCloudGtmAddress' && !empty(json_decode($q['HealthTasks']??'[]',true)) && empty($q['HealthJudgement']))return ['status'=>400,'body'=>json_encode(['Code'=>'CloudGtm.Address.HealthJudgementInvalid','Message'=>'params error.','RequestId'=>'request-health-required'])];return $originalTransport($method,$url,$headers,$body);};
+ Http::$transport=function($method,$url,$headers,$body)use($originalTransport){parse_str(parse_url($url,PHP_URL_QUERY)??'',$q);if(($q['Action']??'')==='UpdateCloudGtmAddress' && !empty(json_decode($q['HealthTasks']??'[]',true)) && empty($q['HealthJudgement']))return ['status'=>400,'body'=>json_encode(['Code'=>'CloudGtm.Address.HealthJudgementInvalid','Message'=>'params error.','RequestId'=>'request-health-required'])];return $originalTransport($method,$url,$headers,$body);};
  verifyGtm($gtm->apply($account,$paired['ticket'])['verification']==='confirmed','Address and new health checks must save together with their dependent condition');
  Http::$transport=$originalTransport;$d=$gtm->detail($account,'addresses','addr-1');$failed=$gtm->preview($account,'UpdateCloudGtmAddress',['AddressId'=>'addr-1','Name'=>'rejected'],$d['token']);$rejectedWrites=0;
  Http::$transport=function($method,$url,$headers,$body)use($originalTransport,&$rejectedWrites){if($method==='POST'){++$rejectedWrites;return ['status'=>400,'body'=>json_encode(['Code'=>'CloudGtm.Address.HealthJudgementInvalid','Message'=>'params error.','RequestId'=>'request-localized'])];}return $originalTransport($method,$url,$headers,$body);};

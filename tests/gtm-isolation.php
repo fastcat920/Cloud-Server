@@ -8,7 +8,7 @@ function isolation(bool $ok,string $why): void { if(!$ok)throw new RuntimeExcept
 $directory=sys_get_temp_dir().'/gtm-isolation-'.bin2hex(random_bytes(8));putenv('CLOUD_DESK_DATA='.$directory);
 $store=new Store($directory);$security=new Security($store);$gtm=new Gtm(new Cloud($security),$store,$security);
 $account=['id'=>1,'provider'=>'aliyun','enabled'=>true,'credentials'=>['key'=>$security->encrypt('fake'),'secret'=>$security->encrypt('fake')]];
-Http::$transport=function($method,$url,$headers,$body){parse_str($method==='POST'?$body:(parse_url($url,PHP_URL_QUERY)??''),$query);return gtmFixture($query);};
+Http::$transport=function($method,$url,$headers,$body){parse_str(parse_url($url,PHP_URL_QUERY)??'',$query);return gtmFixture($query);};
 $path=$directory.'/gtm-fixture.php';
 $read=fn()=>json_decode(substr(file_get_contents($path),strlen(Store::GUARD)),true);
 $write=function($state)use($path){file_put_contents($path,Store::GUARD.json_encode($state,JSON_THROW_ON_ERROR));};
