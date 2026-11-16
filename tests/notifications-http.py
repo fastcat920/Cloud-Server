@@ -31,6 +31,11 @@ with tempfile.TemporaryDirectory(prefix='notification-http-') as directory:
   assert not call(action,event,public=True)['data']['duplicate']
   assert call(action,event,public=True)['data']['duplicate']
   deliveries=call('notify.list')['data']['deliveries'];assert len(deliveries)==1 and deliveries[0]['status']=='sent' and deliveries[0]['attempts']==1
+  assert deliveries[0]['message']==json.dumps(event)
+  original='  original **body**\n'+('中😀'*2200)+'\n  '
+  multipart={'id':'multipart-http','text':{'content':original}}
+  part=call(action,multipart,public=True)['data'];jobs=call('notify.list')['data']['deliveries'];assert jobs[0]['message']==original and jobs[0]['status']=='pending' and jobs[0]['part_index']==1
+  call('notify.process',{},csrf);assert call('notify.list')['data']['deliveries'][0]['status']=='sent'
   event['id']='event-2';event['status']='RESOLVED';call(action,event,public=True)
   call(action,b'{broken',public=True,status=422);call(action,b'x'*131073,public=True,status=413)
   call(action,b'alertName=GTM&alertState=ALARM&message=test',public=True,content_type='application/x-www-form-urlencoded')

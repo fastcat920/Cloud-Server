@@ -32,6 +32,21 @@ try{
  $job=$n->retry($job['id']);ensureN($job['status']==='failed' && !str_contains($job['error'],$token),'Permanent rejection and credential-safe errors');
  Http::$transport=function()use(&$sent){$sent[]=[];return ['status'=>200,'body'=>'{"ok":true}'];};
  ensureN($n->retry($job['id'])['status']==='sent','Explicit retry after fixing destination');
+ // Original alert text must survive envelopes, long messages and partial-send retries.
+ $original="  **原始标题**\n状态: OCCURRED\r\n未翻译的字段: value\n  ";
+ ensureN(Notifications::message(['msgtype'=>'markdown','markdown'=>['text'=>$original]])===$original,'Original body whitespace and markdown preserved');
+ $raw=' { "status": "OCCURRED", "unknown": {"key": 7} } ';
+ ensureN(Notifications::message(json_decode($raw,true,512,JSON_THROW_ON_ERROR),$raw)===$raw,'Unknown structured fields and raw JSON spacing preserved');
+ $long=str_repeat("原始😀文本\n",1400);
+ $chunks=Notifications::parts($long);ensureN(count($chunks)>1 && implode('',$chunks)===$long,'Long Unicode messages split without losing content');
+ $deliveries=[];$attempt=0;
+ Http::$transport=function($method,$url,$headers,$body)use(&$deliveries,&$attempt){$attempt++;$data=json_decode($body,true);$deliveries[]=$data['text'];if($attempt===2)return ['status'=>429,'body'=>'{"ok":false,"error_code":429,"parameters":{"retry_after":1}}'];return ['status'=>200,'body'=>'{"ok":true}'];};
+ $multipart=$n->receive($source,$key,['id'=>'long-original','text'=>['content'=>$long]]);
+ $n->process(20,$multipart['id']);$saved=$n->listing()['deliveries'][0];
+ ensureN($saved['message']===$long && $saved['part_index']===1 && $saved['status']==='retry','Full original retained and successful first segment checkpointed');
+ $n->retry($multipart['id']);$n->process(20,$multipart['id']);
+ $saved=$n->listing()['deliveries'][0];ensureN($saved['status']==='sent' && $saved['part_index']===count($chunks),'Remaining original segments delivered');
+ ensureN($deliveries[0]===$chunks[0] && $deliveries[1]===$chunks[1] && $deliveries[2]===$chunks[1] && array_slice($deliveries,2)==array_slice($chunks,1),'Retry resumes failed segment without replaying earlier segments');
  $n->rotate($source);try{$n->authorize($source,$key);throw new LogicException('Old callback key accepted');}catch(ApiError){}
  $key=$n->listing()['sources'][0]['webhook_key'];
  $pending=$n->receive($source,$key,['text'=>['content'=>'Test DingTalk callback']]);

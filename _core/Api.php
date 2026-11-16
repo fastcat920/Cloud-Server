@@ -213,14 +213,14 @@ final class Api
             if (strlen($raw)>131072) throw new ApiError('回调内容超过 128 KB',413);
             $payload=str_contains(strtolower($_SERVER['CONTENT_TYPE'] ?? ''),'application/json')?json_decode($raw,true,16,JSON_THROW_ON_ERROR):$_POST;
             if (!is_array($payload)) throw new ApiError('回调内容格式不正确');
-            $result=$service->receive($source,$key,$payload);
+            $result=$service->receive($source,$key,$payload,str_contains(strtolower($_SERVER['CONTENT_TYPE'] ?? ''),'application/json')?$raw:null);
             $body=json_encode(['errcode'=>0,'errmsg'=>'ok','code'=>0,'message'=>'success','data'=>$result],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
         } catch (ApiError $e) {$this->respond(null,$e->status,$e->getMessage());}
         catch (\Throwable) {$this->respond(null,422,'回调内容无法处理，请检查 JSON 或表单格式');}
         header('Content-Type: application/json; charset=utf-8');header('Cache-Control: no-store');header('Content-Length: '.strlen($body));echo $body;
         ignore_user_abort(true);
         if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
-        try { $service->process(1,$result['id']); } catch (\Throwable) { /* A saved job remains retryable by the worker. */ }
+        try { $service->process(function_exists('fastcgi_finish_request')?3:1,$result['id']); } catch (\Throwable) { /* A saved job remains retryable by the worker. */ }
         exit;
     }
     private function respond(mixed $data, int $status = 200, string $error = '', ?array $details = null): never

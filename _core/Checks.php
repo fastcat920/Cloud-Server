@@ -35,6 +35,7 @@ final class Checks
             Store::find($data,'notification_channels',(int)($row['channel_id'] ?? 0));
         }
         foreach ($data['notification_jobs'] ?? [] as $row) if (!in_array($row['status'] ?? '',['pending','sending','retry','sent','failed','cancelled'],true) || !is_string($row['message'] ?? null) || !is_string($row['dedupe'] ?? null) || !preg_match('/^[a-f0-9]{64}$/',$row['dedupe']) || !is_int($row['channel_id'] ?? null) || $row['channel_id']<1 || !is_int($row['source_id'] ?? null) || $row['source_id']<0 || !is_string($row['source_name'] ?? null) || !is_string($row['channel_name'] ?? null) || !is_int($row['created_at'] ?? null) || !is_int($row['attempts'] ?? null) || !is_int($row['next_at'] ?? null)) throw new ApiError('消息投递记录备份无效');
+        foreach ($data['notification_jobs'] ?? [] as $row) foreach (['part_index','part_attempts','part_count'] as $field) if (isset($row[$field]) && (!is_int($row[$field]) || $row[$field]<0)) throw new ApiError('消息分段记录备份无效');
         foreach ($data['targets'] as $target) {
             $account = Store::find($data,'accounts',$target['account_id'] ?? 0);
             if ($account['provider'] === 'cloudflare' || !preg_match('/^[a-z0-9-]{2,50}$/',$target['region'] ?? '') || !preg_match('/^[a-z0-9][a-z0-9.-]{1,250}$/',$target['bucket'] ?? '') || !is_string($target['key'] ?? null) || $target['key'] === '') throw new ApiError('备份存储目标无效');

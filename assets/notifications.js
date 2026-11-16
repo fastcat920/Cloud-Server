@@ -235,9 +235,18 @@ export function createNotifications({ api, render }) {
       const row = find("deliveries", d.id);
       modal(
         "消息投递详情",
-        `${labels[row.status]} · 已尝试 ${row.attempts} 次`,
-        field("message", "消息内容", row.message, "textarea", "readonly") +
-          (row.error ? `<p class="notice error">${e(row.error)}</p>` : ""),
+        `${labels[row.status]} · 已尝试 ${row.attempts} 次${row.part_count > 1 ? ` · 分段已发送 ${row.part_index || 0}/${row.part_count}` : ""}`,
+        field(
+          "message",
+          row.content_mode === "original"
+            ? "原始消息正文"
+            : row.content_mode === "system"
+              ? "系统测试消息"
+              : "消息内容（旧版整理）",
+          row.message,
+          "textarea",
+          "readonly",
+        ) + (row.error ? `<p class="notice error">${e(row.error)}</p>` : ""),
         async () => {},
         "关闭",
       );
