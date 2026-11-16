@@ -89,6 +89,9 @@ export function errorDetails(details) {
     request_id: "请求编号",
     http_status: "云端 HTTP 状态",
     original_message: "原始错误",
+    request_method: "请求方式",
+    request_parameters: "实际提交的业务参数（JSON 字段保留发送格式）",
+    address_context: "修改前地址配置",
   };
   return `<details class="help"><summary>技术详情（用于排查）</summary><dl>${Object.entries(
     fields,
@@ -101,7 +104,7 @@ export function errorDetails(details) {
     )
     .map(
       ([key, label]) =>
-        `<dt>${escape(label)}</dt><dd>${escape(details[key])}</dd>`,
+        `<dt>${escape(label)}</dt><dd>${["request_parameters", "address_context"].includes(key) ? `<pre>${escape(details[key])}</pre>` : escape(details[key])}</dd>`,
     )
     .join("")}</dl></details>`;
 }

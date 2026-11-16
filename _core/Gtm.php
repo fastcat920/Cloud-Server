@@ -51,7 +51,15 @@ final class Gtm
             } catch (\RuntimeException $error) {
                 $transient=$error instanceof CloudResponseError ? in_array($error->httpStatus,[502,503,504],true) : preg_match('/[（(]28[）)]|HTTP 50[234]/',$error->getMessage())===1;
                 if ($read && $attempt===0 && $transient) continue;
-                throw self::requestError($operation,$error);
+                $translated=self::requestError($operation,$error);
+                $fields=self::catalog()[$operation]['fields'] ?? [];
+                // Record only schema-approved business fields, never RPC authentication metadata.
+                $submitted=array_intersect_key($params,$fields);
+                if ($fields) $translated=new GtmRequestError($translated->getMessage(),$translated->details+[
+                    'request_method'=>'POST',
+                    'request_parameters'=>json_encode($submitted,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR),
+                ],$translated);
+                throw $translated;
             }
         }
         throw new \RuntimeException('GTM 读取失败');
@@ -371,7 +379,13 @@ final class Gtm
                 $change['status']='success';$change['result']=$result;$this->record($change);
                 return $result;
             } catch (\Throwable $error) {
-                $change['status']='failed';$change['error']=$error instanceof \RuntimeException?$error->getMessage():'GTM 操作失败';if ($error instanceof GtmRequestError) $change['error_details']=$error->details;$this->record($change);throw $error;
+                $change['status']='failed';$change['error']=$error instanceof \RuntimeException?$error->getMessage():'GTM 操作失败';if ($error instanceof GtmRequestError) {
+                    if ($kind==='addresses') {
+                        $context=array_intersect_key($ticket['before'],array_flip(['Type','Address','AvailableMode','HealthJudgement','HealthTasks']));
+                        $error=new GtmRequestError($error->getMessage(),$error->details+['address_context'=>json_encode($context,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)],$error);
+                    }
+                    $change['error_details']=$error->details;
+                }$this->record($change);throw $error;
             }
         } finally { if ($heldLock===null) fclose($lock); }
     }
