@@ -2195,3 +2195,12 @@ body:has(.record-drawer[open]) {
   background: var(--bg);
   color: var(--muted);
 }
+
+.notification-panels {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.notification-panels .button.text.danger {
+  color: var(--danger);
+}

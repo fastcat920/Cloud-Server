@@ -8,16 +8,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check PHP syntax
-        run: find _core tests -name '*.php' ! -name view.php -print0 | xargs -0 -n1 php -l && php -l index.php
+        run: find _core tests -name '*.php' ! -name view.php -print0 | xargs -0 -n1 php -l && php -l index.php && php -l bin/notify-worker.php
       - name: Check JavaScript syntax
-        run: node --check assets/app.js && node --check assets/ui.js && node --check assets/config-form.js && node --check assets/gtm.js
+        run: node --check assets/app.js && node --check assets/ui.js && node --check assets/config-form.js && node --check assets/gtm.js && node --check assets/notifications.js
       - name: Recursive configuration form tests
         run: node tests/config-form.mjs && node tests/config-edit.mjs && node tests/gtm-form.mjs
       - run: node tests/dns-form.mjs
       - name: Native unit tests
-        run: php tests/unit.php && php tests/default-template.php && php tests/reliability.php && php tests/gtm.php && php tests/gtm-isolation.php
+        run: php tests/unit.php && php tests/default-template.php && php tests/reliability.php && php tests/gtm.php && php tests/gtm-isolation.php && php tests/notifications.php
       - name: Isolated HTTP integration tests
-        run: PHP_BINARY=php python3 tests/integration.py
+        run: PHP_BINARY=php python3 tests/integration.py && PHP_BINARY=php python3 tests/notifications-http.py
       - name: HTTPS connection reuse tests
         run: PHP_BINARY=php python3 tests/http-reuse.py
       - name: Same-directory deployment and update tests

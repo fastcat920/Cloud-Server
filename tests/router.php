@@ -10,7 +10,7 @@ $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 if ($path !== '/' && $path !== '/index.php' && is_file($root.$path)) {
     return false;
 }
-foreach (['Store','Security','Cloud','Objects','Configs','Plans','Checks','Releases','Gtm','Importer','Api'] as $file) {
+foreach (['Store','Security','Cloud','Objects','Configs','Plans','Checks','Releases','Gtm','Importer','Notifications','Api'] as $file) {
     require_once $root.'/_core/'.$file.'.php';
 }
 CloudDesk\Http::$transport = function ($method, $url, $headers, $body) {
@@ -18,6 +18,7 @@ CloudDesk\Http::$transport = function ($method, $url, $headers, $body) {
     $path = parse_url($url, PHP_URL_PATH);
     parse_str(parse_url($url, PHP_URL_QUERY) ?? '', $query);
     if ($method==='POST' && $body!=='' && ($headers['Content-Type'] ?? '')==='application/x-www-form-urlencoded') parse_str($body,$query);
+    if ($host==='api.telegram.org') return ['status'=>200,'body'=>'{"ok":true,"result":{"message_id":1}}'];
     if (str_contains($host, 'ecs.aliyuncs.com')) {
         return ['status' => 200,'body' => json_encode(['RequestId' => 'test','TotalCount' => 1,'Instances' => ['Instance' => [['InstanceId' => 'i-native-test','InstanceName' => 'Native test','Status' => 'Running','Cpu' => 2,'Memory' => 4096]]]])];
     }

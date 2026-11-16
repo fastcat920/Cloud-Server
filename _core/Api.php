@@ -90,7 +90,7 @@ final class Api
     }
     private function safe(array $state): array
     {
-        unset($state['admin'],$state['rates'],$state['sequences'],$state['gtm_changes']);
+        unset($state['admin'],$state['rates'],$state['sequences'],$state['gtm_changes'],$state['notification_channels'],$state['notification_sources'],$state['notification_jobs']);
         $state['restore_backups'] = array_map('basename',glob($this->store->directory().'/backups/before-restore-*.php') ?: []);
         rsort($state['restore_backups']);
         foreach ($state['versions'] as &$v) $v['edit_token'] = Checks::token($v);
@@ -110,6 +110,7 @@ final class Api
     }
     public function run(): never
     {
+        if (($_GET['api'] ?? '')==='notify.webhook') $this->webhook();
         $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
         session_set_save_handler(new Sessions($this->store->directory()), true);
         ini_set('session.use_strict_mode', '1');
@@ -124,7 +125,7 @@ final class Api
         $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
         try {
             $write = $method === 'POST';
-            $reads = ['boot','overview','regions','instances','buckets','objects','cf.zones','cf.records','dns.list','gtm.list','gtm.detail','gtm.pools','gtm.addresses','gtm.monitors','gtm.catalog','gtm.options','gtm.resource','gtm.references','gtm.history'];
+            $reads = ['notify.list','boot','overview','regions','instances','buckets','objects','cf.zones','cf.records','dns.list','gtm.list','gtm.detail','gtm.pools','gtm.addresses','gtm.monitors','gtm.catalog','gtm.options','gtm.resource','gtm.references','gtm.history'];
             if (!$write && !in_array($action, $reads, true)) {
                 throw new ApiError('此操作需要 POST 请求', 405);
             }
@@ -201,6 +202,27 @@ final class Api
             $this->respond(null, 422, $e instanceof \RuntimeException ? $e->getMessage() : '操作失败，请检查输入与服务器运行环境');
         }
     }
+    private function webhook(): never
+    {
+        try {
+            if (($_SERVER['REQUEST_METHOD'] ?? '')!=='POST') throw new ApiError('回调需要 POST 请求',405);
+            $service=new Notifications($this->store,$this->security);
+            $source=(int)($_GET['source'] ?? 0);$key=is_string($_GET['key'] ?? null)?$_GET['key']:'';
+            $service->authorize($source,$key);
+            $raw=file_get_contents('php://input',false,null,0,131073);
+            if (strlen($raw)>131072) throw new ApiError('回调内容超过 128 KB',413);
+            $payload=str_contains(strtolower($_SERVER['CONTENT_TYPE'] ?? ''),'application/json')?json_decode($raw,true,16,JSON_THROW_ON_ERROR):$_POST;
+            if (!is_array($payload)) throw new ApiError('回调内容格式不正确');
+            $result=$service->receive($source,$key,$payload);
+            $body=json_encode(['errcode'=>0,'errmsg'=>'ok','code'=>0,'message'=>'success','data'=>$result],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        } catch (ApiError $e) {$this->respond(null,$e->status,$e->getMessage());}
+        catch (\Throwable) {$this->respond(null,422,'回调内容无法处理，请检查 JSON 或表单格式');}
+        header('Content-Type: application/json; charset=utf-8');header('Cache-Control: no-store');header('Content-Length: '.strlen($body));echo $body;
+        ignore_user_abort(true);
+        if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
+        try { $service->process(1,$result['id']); } catch (\Throwable) { /* A saved job remains retryable by the worker. */ }
+        exit;
+    }
     private function respond(mixed $data, int $status = 200, string $error = '', ?array $details = null): never
     {
         http_response_code($status);
@@ -214,6 +236,15 @@ final class Api
         $exclusive = in_array($action,['target.save','target.delete','plan.save','account.save','account.delete','config.settings','restore','import.v1','template.delete'],true) ? (new Releases($this->store,$this->security,$this->objects,$this->configs))->lock() : null;
         try {
         switch ($action) {
+            case 'notify.list':return (new Notifications($this->store,$this->security))->listing()+['worker_path'=>dirname(__DIR__).'/bin/notify-worker.php'];
+            case 'notify.channel.save':return (new Notifications($this->store,$this->security))->saveChannel($this->input);
+            case 'notify.source.save':return (new Notifications($this->store,$this->security))->saveSource($this->input);
+            case 'notify.channel.delete':case 'notify.source.delete':$this->confirmation((string)$this->id());return (new Notifications($this->store,$this->security))->remove($action==='notify.channel.delete'?'channel':'source',$this->id());
+            case 'notify.source.rotate':$this->confirmation((string)$this->id());return (new Notifications($this->store,$this->security))->rotate($this->id());
+            case 'notify.test':$this->limited('notify.test',10,60);return (new Notifications($this->store,$this->security))->test($this->id());
+            case 'notify.retry':$this->limited('notify.retry',10,60);return (new Notifications($this->store,$this->security))->retry($this->id());
+            case 'notify.process':return (new Notifications($this->store,$this->security))->process(5);
+
             case 'overview':Plans::migrate($this->store);
                 (new Releases($this->store,$this->security,$this->objects,$this->configs))->recover();
                 return $this->safe($this->store->read());
@@ -762,6 +793,16 @@ final class Api
                 $data['settings'][$field] = $this->security->encrypt($source->decrypt($data['settings'][$field]));
             }
         }
+        foreach (['notification_channels'=>'token','notification_sources'=>'secret'] as $table=>$field) {
+            $data[$table] ??=[];
+            foreach ($data[$table] as &$row) {
+                $plain=$source->decrypt($row[$field]);
+                if (!preg_match($field==='secret'?'/^[a-f0-9]{64}$/':'/^[0-9]{5,}:[A-Za-z0-9_-]{20,}$/',$plain)) throw new ApiError('通知凭证备份格式无效');
+                $row[$field]=$this->security->encrypt($plain);
+            }unset($row);
+        }
+        $data['notification_jobs'] ??=[];
+        foreach ($data['notification_jobs'] as &$notification) if ($notification['status']==='sending') { $notification['status']='retry';$notification['next_at']=time(); }unset($notification);
         foreach ($data['publications'] as &$job) {
             if (!empty($job['frozen'])) {
                 $frozen = json_decode($source->decrypt($job['frozen']),true,512,JSON_THROW_ON_ERROR);
@@ -786,7 +827,7 @@ final class Api
             if (!isset($data['plans'],$data['templates'])) {
                 unset($s['plans'],$s['templates']);
             }
-            foreach (['accounts','targets','versions','publications','settings','events','sequences','plans','templates','gtm_changes'] as $table) {
+            foreach (['accounts','targets','versions','publications','settings','events','sequences','plans','templates','gtm_changes','notification_channels','notification_sources','notification_jobs'] as $table) {
                 if (isset($data[$table])) {
                     $s[$table] = $data[$table];
                 }

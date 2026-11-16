@@ -1,3 +1,4 @@
+import { createNotifications } from "./notifications.js";
 import { dnsPrefix, dnsFullName } from "./dns.js";
 import { createGtm } from "./gtm.js";
 import {
@@ -97,6 +98,12 @@ const pages = {
     "客户端配置",
     "编辑、预览并发布配置到多个云存储目标。",
   ],
+  notifications: [
+    "消息通知",
+    "activity",
+    "消息通知",
+    "管理通知渠道、云端回调与投递记录。",
+  ],
   events: ["操作记录", "activity", "操作记录", "追踪配置发布和资源管理操作。"],
   settings: [
     "设置",
@@ -106,6 +113,7 @@ const pages = {
   ],
 };
 const readActions = new Set([
+  "notify.list",
   "boot",
   "overview",
   "regions",
@@ -234,6 +242,7 @@ const ctx = () =>
     tab: "list",
   });
 const gtm = createGtm({ api, ctx, render, queryResources });
+const notifications = createNotifications({ api, render });
 const accountLogo = (a) =>
   `<div class="provider-logo ${e(a.provider)}">${e({ aliyun: "阿", tencent: "腾", ucloud: "U", cloudflare: "C" }[a.provider])}</div>`;
 function pageHead(actions = "") {
@@ -318,6 +327,7 @@ function render() {
     configs: configsView,
     events: eventsView,
     settings: settingsView,
+    notifications: notifications.view,
   };
   shell(views[route]());
   if (route === "gtm") gtm.mount();
@@ -1125,6 +1135,7 @@ const actions = {
   "modal.close": () => dialog.close(),
   refresh: () => refresh(),
   logout: async () => {
+    notifications.reset();
     await api("logout");
     boot = await api("boot");
     auth();
@@ -1544,6 +1555,7 @@ const actions = {
           { confirmation: data.get("confirmation") },
           { file: form.querySelector("[type=file]").files[0] },
         );
+        notifications.reset();
         toast("备份已恢复");
         await refresh();
       },
@@ -1647,7 +1659,7 @@ function captureTree() {
   r.summary = form.elements.summary.value;
   return r;
 }
-Object.assign(actions, gtm.actions);
+Object.assign(actions, gtm.actions, notifications.actions);
 Object.assign(actions, {
   "tree.remove": (d) => {
     const path = JSON.parse(d.path);

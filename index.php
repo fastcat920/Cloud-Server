@@ -7,7 +7,7 @@ header('X-Frame-Options: DENY');
 header('Referrer-Policy: same-origin');
 header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
 // Fingerprint the complete asset graph so updates also refresh imported modules.
-$assetNames = ['app.js', 'ui.js', 'config-form.js', 'config-edit.js', 'gtm.js', 'dns.js', 'app.css'];
+$assetNames = ['app.js', 'ui.js', 'config-form.js', 'config-edit.js', 'gtm.js', 'dns.js', 'notifications.js', 'app.css'];
 $assetVersion = hash('sha256', implode('', array_map(fn ($name) => hash_file('sha256', __DIR__.'/assets/'.$name), $assetNames)));
 if (isset($_GET['asset'])) {
     $name = $_GET['asset'];
@@ -28,7 +28,7 @@ if (isset($_GET['asset'])) {
     exit;
 }
 if (isset($_GET['api'])) {
-    foreach (['Store','Security','Cloud','Objects','Configs','Plans','Checks','Releases','Gtm','Importer','Api'] as $file) {
+    foreach (['Store','Security','Cloud','Objects','Configs','Plans','Checks','Releases','Gtm','Importer','Notifications','Api'] as $file) {
         require_once __DIR__.'/_core/'.$file.'.php';
     }
     try {

@@ -15,7 +15,8 @@ final class Checks
             if (!isset($data[$table]) || !is_array($data[$table])) throw new ApiError('备份缺少数据表：'.$table);
         }
         if (isset($data['gtm_changes']) && !is_array($data['gtm_changes'])) throw new ApiError('GTM 历史记录格式无效');
-        foreach (['accounts','targets','versions','publications','plans','templates'] as $table) {
+        foreach (['notification_channels','notification_sources','notification_jobs'] as $table) if (isset($data[$table]) && !is_array($data[$table])) throw new ApiError('通知备份格式无效');
+        foreach (['accounts','targets','versions','publications','plans','templates','notification_channels','notification_sources','notification_jobs'] as $table) {
             $ids = [];
             foreach ($data[$table] ?? [] as $row) {
                 if (!is_array($row) || !isset($row['id']) || !is_int($row['id']) || $row['id'] < 1 || isset($ids[$row['id']])) throw new ApiError('备份记录 ID 无效或重复：'.$table);
@@ -26,6 +27,14 @@ final class Checks
         foreach ($data['accounts'] as $account) {
             if (!in_array($account['provider'] ?? '',['aliyun','tencent','ucloud','cloudflare'],true) || !is_array($account['credentials'] ?? null) || !is_bool($account['enabled'] ?? null)) throw new ApiError('备份账号格式无效');
         }
+        foreach ($data['notification_channels'] ?? [] as $row) {
+            if (($row['type'] ?? '')!=='telegram' || !is_string($row['token'] ?? null) || !is_bool($row['enabled'] ?? null) || !is_string($row['name'] ?? null) || !preg_match('/^(?:-?[0-9]+|@[a-zA-Z0-9_]{5,})$/',$row['chat_id'] ?? '') || (isset($row['thread_id']) && (!is_int($row['thread_id']) || $row['thread_id']<1))) throw new ApiError('通知渠道备份无效');
+        }
+        foreach ($data['notification_sources'] ?? [] as $row) {
+            if (($row['kind'] ?? '')!=='aliyun' || !is_string($row['secret'] ?? null) || !is_bool($row['enabled'] ?? null) || !is_string($row['name'] ?? null)) throw new ApiError('告警来源备份无效');
+            Store::find($data,'notification_channels',(int)($row['channel_id'] ?? 0));
+        }
+        foreach ($data['notification_jobs'] ?? [] as $row) if (!in_array($row['status'] ?? '',['pending','sending','retry','sent','failed','cancelled'],true) || !is_string($row['message'] ?? null) || !is_string($row['dedupe'] ?? null) || !preg_match('/^[a-f0-9]{64}$/',$row['dedupe']) || !is_int($row['channel_id'] ?? null) || $row['channel_id']<1 || !is_int($row['source_id'] ?? null) || $row['source_id']<0 || !is_string($row['source_name'] ?? null) || !is_string($row['channel_name'] ?? null) || !is_int($row['created_at'] ?? null) || !is_int($row['attempts'] ?? null) || !is_int($row['next_at'] ?? null)) throw new ApiError('消息投递记录备份无效');
         foreach ($data['targets'] as $target) {
             $account = Store::find($data,'accounts',$target['account_id'] ?? 0);
             if ($account['provider'] === 'cloudflare' || !preg_match('/^[a-z0-9-]{2,50}$/',$target['region'] ?? '') || !preg_match('/^[a-z0-9][a-z0-9.-]{1,250}$/',$target['bucket'] ?? '') || !is_string($target['key'] ?? null) || $target['key'] === '') throw new ApiError('备份存储目标无效');
