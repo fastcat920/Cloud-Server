@@ -165,6 +165,17 @@ export function createNotifications({ api, render }) {
           row?.channel_id || data.channels[0].id,
           "required",
         ) +
+        select(
+          "format",
+          "通知排版",
+          [
+            { value: "readable", label: "易读排版" },
+            { value: "original", label: "原文（用于核对）" },
+          ],
+          row?.format || "readable",
+          "required",
+        ) +
+        '<p class="help">易读排版按阿里云字段显示域名、地址、IP、时间与实例，未知业务字段保留；不展示账号 ID 和回调地址。原文模式不删减字段，可能包含这些信息。修改仅影响新收到的通知。</p>' +
         check("enabled", "启用接收", row?.enabled ?? true),
       async (form) => {
         const id = await api("notify.source.save", {
@@ -240,9 +251,11 @@ export function createNotifications({ api, render }) {
           "message",
           row.content_mode === "original"
             ? "原始消息正文"
-            : row.content_mode === "system"
-              ? "系统测试消息"
-              : "消息内容（旧版整理）",
+            : row.content_mode === "readable"
+              ? "消息正文（易读排版）"
+              : row.content_mode === "system"
+                ? "系统测试消息"
+                : "消息内容（旧版整理）",
           row.message,
           "textarea",
           "readonly",

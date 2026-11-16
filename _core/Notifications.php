@@ -39,11 +39,12 @@ final class Notifications
     public function saveSource(array $input): int
     {
         $name=self::text($input['name'] ?? '',80);$channel=(int)($input['channel_id'] ?? 0);
+        if (isset($input['format']) && !in_array($input['format'],['readable','original'],true)) throw new ApiError('通知格式无效');
         if (!$name) throw new ApiError('请填写告警来源名称');
         return $this->store->transaction(function(&$s)use($input,$name,$channel){
             Store::find($s,'notification_channels',$channel);
             $id=(int)($input['id'] ?? 0);$old=$id?Store::find($s,'notification_sources',$id):null;
-            $row=['id'=>$id?:Store::id($s,'notification_sources'),'kind'=>'aliyun','name'=>$name,'channel_id'=>$channel,'enabled'=>!empty($input['enabled']),'secret'=>$old['secret'] ?? $this->security->encrypt(bin2hex(random_bytes(32)))];
+            $row=['id'=>$id?:Store::id($s,'notification_sources'),'kind'=>'aliyun','name'=>$name,'format'=>$input['format'] ?? $old['format'] ?? 'readable','channel_id'=>$channel,'enabled'=>!empty($input['enabled']),'secret'=>$old['secret'] ?? $this->security->encrypt(bin2hex(random_bytes(32)))];
             $s['notification_sources']=array_values(array_filter($s['notification_sources'] ?? [],fn($r)=>$r['id']!==$row['id']));$s['notification_sources'][]=$row;
             if (!$row['enabled']) foreach($s['notification_jobs'] ?? [] as $i=>$job) if($job['source_id']===$row['id'] && in_array($job['status'],['pending','retry'],true))$s['notification_jobs'][$i]['status']='cancelled';
             Store::event($s,'notify.source.save',$name);return $row['id'];
@@ -81,6 +82,33 @@ final class Notifications
         // Structured events retain every key and value; raw JSON also retains whitespace.
         return $raw ?? json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
     }
+    public static function readable(array $payload,?string $raw=null): string
+    {
+        $content=$payload['domainAlertContent'] ?? null;
+        if (is_string($content)) $content=json_decode($content,true);
+        if (!is_array($content) || array_is_list($content)) {
+            $safe=$payload;unset($safe['webhook'],$safe['userId']);
+            return self::message($safe,$safe===$payload?$raw:null);
+        }
+        $type=is_string($payload['alertType'] ?? null)?$payload['alertType']:'';
+        $description=is_scalar($payload['desc'] ?? null)?trim((string)$payload['desc']):'';
+        $heading=($type==='addr_alert'?'🔴':'ℹ️').' GTM '.($description!==''?$description:($type==='addr_alert'?'地址异常':'状态变更'));
+        $lines=[$heading,''];$used=[];
+        foreach (['domainName'=>'域名','addressPoolName'=>'地址池','poolName'=>'地址池','addressName'=>'地址','addressIp'=>'IP','time'=>'时间'] as $key=>$label) {
+            if (is_scalar($content[$key] ?? null) && trim((string)$content[$key])!=='') {$lines[]=$label.'：'.(string)$content[$key];$used[]=$key;}
+        }
+        if (!in_array('time',$used,true) && is_scalar($content['timestamp'] ?? null)) $lines[]='时间戳：'.$content['timestamp'];
+        if (is_scalar($content['timestamp'] ?? null)) $used[]='timestamp';
+        if (is_scalar($content['instanceName'] ?? null) && trim((string)$content['instanceName'])!=='') {$lines[]='';$lines[]='实例：'.$content['instanceName'];$used[]='instanceName';}
+        $extra=$payload;unset($extra['webhook'],$extra['userId'],$extra['domainAlertContent']);
+        if (is_scalar($payload['desc'] ?? null)) unset($extra['desc']);
+        if ($type==='addr_alert') unset($extra['alertType']);
+        if (($payload['title'] ?? '')==='公网全局流量管理 (GTM) 健康检查状态变更通知') unset($extra['title']);
+        $remaining=array_diff_key($content,array_flip($used));
+        if ($remaining) $extra['domainAlertContent']=$remaining;
+        if ($extra) {$lines[]='';$lines[]='其他信息：';$lines[]=json_encode($extra,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR);}
+        return implode("\n",$lines);
+    }
     public static function parts(string $message): array
     {
         $chars=preg_split('//u',$message,-1,PREG_SPLIT_NO_EMPTY);
@@ -100,15 +128,16 @@ final class Notifications
         if (!$payload || array_is_list($payload)) throw new ApiError('回调内容必须为非空 JSON 对象或表单');
         $canonical=function($v)use(&$canonical){if(!is_array($v))return $v;if(!array_is_list($v))ksort($v);return array_map($canonical,$v);};
         $eventId=$payload['id'] ?? $payload['eventId'] ?? null;
-        $phase=$payload['status'] ?? $payload['subtype'] ?? $payload['alertState'] ?? $payload['alertStatus'] ?? '';
+        $phase=$payload['status'] ?? $payload['subtype'] ?? $payload['alertState'] ?? $payload['alertStatus'] ?? $payload['alertType'] ?? '';
         $identity=is_scalar($eventId)?['event'=>(string)$eventId,'phase'=>is_scalar($phase)?(string)$phase:'']:$canonical($payload);
-        $hash=hash('sha256',json_encode([$sourceId,'original-v1',$identity],JSON_THROW_ON_ERROR));
-        return $this->enqueue($source['channel_id'],$sourceId,$source['name'],self::message($payload,$raw),$hash,isset($payload['id']) || isset($payload['eventId']) || isset($payload['time']) || isset($payload['timestamp'])?86400:30);
+        $format=$source['format'] ?? 'readable';
+        $hash=hash('sha256',json_encode([$sourceId,$format==='original'?'original-v1':'gtm-readable-v1',$identity],JSON_THROW_ON_ERROR));
+        return $this->enqueue($source['channel_id'],$sourceId,$source['name'],($format==='original'?self::message($payload,$raw):self::readable($payload,$raw)),$hash,isset($payload['id']) || isset($payload['eventId']) || isset($payload['time']) || isset($payload['timestamp']) || isset($payload['domainAlertContent']['timestamp'])?86400:30,$format);
     }
-    private function enqueue(int $channelId,int $sourceId,string $sourceName,string $message,string $hash,int $window=30): array
+    private function enqueue(int $channelId,int $sourceId,string $sourceName,string $message,string $hash,int $window=30,string $format='original'): array
     {
         if (strlen($message)>262144 || !self::parts($message)) throw new ApiError('通知正文为空或超过 256 KB');
-        return $this->store->transaction(function(&$s)use($channelId,$sourceId,$sourceName,$message,$hash,$window){
+        return $this->store->transaction(function(&$s)use($channelId,$sourceId,$sourceName,$message,$hash,$window,$format){
             $channel=Store::find($s,'notification_channels',$channelId);
             if (!$channel['enabled']) throw new ApiError('通知渠道已停用',409);
             if ($sourceId) { $source=Store::find($s,'notification_sources',$sourceId);if(!$source['enabled'])throw new ApiError('告警来源已停用',409); }
@@ -121,7 +150,7 @@ final class Notifications
             $s['notification_jobs']=array_values($jobs);
             $recent=array_filter($jobs,fn($r)=>$r['created_at']>time()-60);
             if(count($recent)>=200)throw new ApiError('通知请求过于频繁',429);
-            $job=['id'=>Store::id($s,'notification_jobs'),'channel_id'=>$channelId,'channel_name'=>$channel['name'],'source_id'=>$sourceId,'source_name'=>$sourceName,'message'=>$message,'content_mode'=>$sourceId?'original':'system','part_index'=>0,'part_attempts'=>0,'part_count'=>count(self::parts($message)),'dedupe'=>$hash,'created_at'=>time(),'status'=>'pending','attempts'=>0,'next_at'=>time()];
+            $job=['id'=>Store::id($s,'notification_jobs'),'channel_id'=>$channelId,'channel_name'=>$channel['name'],'source_id'=>$sourceId,'source_name'=>$sourceName,'message'=>$message,'content_mode'=>$sourceId?$format:'system','part_index'=>0,'part_attempts'=>0,'part_count'=>count(self::parts($message)),'dedupe'=>$hash,'created_at'=>time(),'status'=>'pending','attempts'=>0,'next_at'=>time()];
             $s['notification_jobs'][]=$job;$this->trim($s);return ['id'=>$job['id'],'duplicate'=>false];
         });
     }

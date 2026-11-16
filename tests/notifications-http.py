@@ -39,6 +39,10 @@ with tempfile.TemporaryDirectory(prefix='notification-http-') as directory:
   event['id']='event-2';event['status']='RESOLVED';call(action,event,public=True)
   call(action,b'{broken',public=True,status=422);call(action,b'x'*131073,public=True,status=413)
   call(action,b'alertName=GTM&alertState=ALARM&message=test',public=True,content_type='application/x-www-form-urlencoded')
+  gtm={'alertType':'addr_alert','desc':'地址异常','domainAlertContent':{'addressIp':'192.0.2.37','addressName':'cece','domainName':'example.com','instanceName':'GTM','time':'2026-11-16 23:10:16','timestamp':1794841816581},'title':'公网全局流量管理 (GTM) 健康检查状态变更通知','userId':12345,'webhook':'https://example.invalid/?key=private-callback'}
+  call(action,gtm,public=True);readable=call('notify.list')['data']['deliveries'][0];assert readable['content_mode']=='readable' and '域名：example.com' in readable['message'] and 'private-callback' not in readable['message'] and '地址池' not in readable['message']
+  call('notify.source.save',{'id':source,'name':'Aliyun GTM','channel_id':channel,'enabled':True,'format':'original'},csrf)
+  call(action,gtm,public=True);assert call('notify.list')['data']['deliveries'][0]['message']==json.dumps(gtm)
   exported=json.loads(call('backup',{},csrf,raw=True))
   # Rewrap the backup under another installation key, then import into the current installation.
   code="require '_core/Store.php';require '_core/Security.php';$b=json_decode(stream_get_contents(STDIN),true);$from=new CloudDesk\\Security($b['key']);$key=base64_encode(random_bytes(32));$to=new CloudDesk\\Security($key);foreach(['notification_channels'=>'token','notification_sources'=>'secret'] as $table=>$field){foreach($b['state'][$table] as &$r)$r[$field]=$to->encrypt($from->decrypt($r[$field]));unset($r);}$b['key']=$key;echo json_encode($b);"

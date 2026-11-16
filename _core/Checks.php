@@ -32,6 +32,7 @@ final class Checks
         }
         foreach ($data['notification_sources'] ?? [] as $row) {
             if (($row['kind'] ?? '')!=='aliyun' || !is_string($row['secret'] ?? null) || !is_bool($row['enabled'] ?? null) || !is_string($row['name'] ?? null)) throw new ApiError('告警来源备份无效');
+            if (isset($row['format']) && !in_array($row['format'],['original','readable'],true)) throw new ApiError('通知排版备份无效');
             Store::find($data,'notification_channels',(int)($row['channel_id'] ?? 0));
         }
         foreach ($data['notification_jobs'] ?? [] as $row) if (!in_array($row['status'] ?? '',['pending','sending','retry','sent','failed','cancelled'],true) || !is_string($row['message'] ?? null) || !is_string($row['dedupe'] ?? null) || !preg_match('/^[a-f0-9]{64}$/',$row['dedupe']) || !is_int($row['channel_id'] ?? null) || $row['channel_id']<1 || !is_int($row['source_id'] ?? null) || $row['source_id']<0 || !is_string($row['source_name'] ?? null) || !is_string($row['channel_name'] ?? null) || !is_int($row['created_at'] ?? null) || !is_int($row['attempts'] ?? null) || !is_int($row['next_at'] ?? null)) throw new ApiError('消息投递记录备份无效');

@@ -47,6 +47,16 @@ try{
  $n->retry($multipart['id']);$n->process(20,$multipart['id']);
  $saved=$n->listing()['deliveries'][0];ensureN($saved['status']==='sent' && $saved['part_index']===count($chunks),'Remaining original segments delivered');
  ensureN($deliveries[0]===$chunks[0] && $deliveries[1]===$chunks[1] && $deliveries[2]===$chunks[1] && array_slice($deliveries,2)==array_slice($chunks,1),'Retry resumes failed segment without replaying earlier segments');
+ $gtm=['alertType'=>'addr_alert','desc'=>'地址异常','domainAlertContent'=>['addressIp'=>'192.0.2.37','addressName'=>'cece','domainName'=>'example.com','instanceName'=>'实例一','time'=>'2026-11-16 23:10:16','timestamp'=>1794841816581],'title'=>'公网全局流量管理 (GTM) 健康检查状态变更通知','userId'=>123456789,'webhook'=>'https://example.invalid/?key=secret-to-exclude'];
+ $expected="🔴 GTM 地址异常\n\n域名：example.com\n地址：cece\nIP：192.0.2.37\n时间：2026-11-16 23:10:16\n\n实例：实例一";
+ ensureN(Notifications::readable($gtm)===$expected,'Actual GTM payload maps to compact ordered fields without fabricated pool or duplicate metadata');
+ $extra=$gtm;$extra['domainAlertContent']['newKey']=['code'=>'unchanged'];$extra['newRoot']='business-data';
+ $formatted=Notifications::readable($extra);ensureN(str_contains($formatted,'newKey') && str_contains($formatted,'unchanged') && str_contains($formatted,'business-data') && !str_contains($formatted,'secret-to-exclude') && !str_contains($formatted,'123456789'),'Unknown business data preserved, management fields excluded');
+ $unknown=$gtm;$unknown['alertType']='future_event';$unknown['desc']='未知事件说明';ensureN(str_contains(Notifications::readable($unknown),'future_event') && !str_contains(Notifications::readable($unknown),'🟢'),'Unknown event types are never inferred as recovery');
+ $n->saveSource(['id'=>$source,'name'=>'GTM','channel_id'=>$channel,'enabled'=>true,'format'=>'original']);
+ $raw=json_encode($gtm,JSON_UNESCAPED_UNICODE);$originalJob=$n->receive($source,$key,$gtm,$raw);ensureN($n->listing()['deliveries'][0]['message']===$raw,'Original mode remains available for comparison');
+ $n->saveSource(['id'=>$source,'name'=>'GTM','channel_id'=>$channel,'enabled'=>true,'format'=>'readable']);
+ $readableJob=$n->receive($source,$key,$gtm,$raw);ensureN(!$readableJob['duplicate'] && $n->listing()['deliveries'][0]['message']===$expected && $n->listing()['deliveries'][0]['content_mode']==='readable','Readable mode applies to new callbacks, with separate format deduplication');
  $n->rotate($source);try{$n->authorize($source,$key);throw new LogicException('Old callback key accepted');}catch(ApiError){}
  $key=$n->listing()['sources'][0]['webhook_key'];
  $pending=$n->receive($source,$key,['text'=>['content'=>'Test DingTalk callback']]);
