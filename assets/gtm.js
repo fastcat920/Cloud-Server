@@ -1989,7 +1989,9 @@ export function createGtm({ api, ctx, render, queryResources }) {
     surface.style.height = height * canvasZoom + "px";
     canvas.scrollLeft += x * (canvasZoom - old);
     canvas.scrollTop += y * (canvasZoom - old);
-    const label = canvas.querySelector('[data-action="gtm.zoom.reset"]');
+    const label = canvas
+      .closest(".gtm-workbench")
+      .querySelector('[data-action="gtm.zoom.reset"]');
     if (label) label.textContent = Math.round(canvasZoom * 100) + "%";
   }
   function mountCanvas() {
@@ -2109,7 +2111,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
     else if (kind === "addresses")
       graph = `<div class="gtm-address-grid">${card("addresses", resource)}</div>`;
     else graph = card("monitors", resource);
-    return `<section class="gtm-workbench"><header class="gtm-workbench-head"><div class="toolbar">${button("返回列表", "gtm.close", {}, "text")}<strong>${e(gtmName(resource))}</strong>${badge("GTM 3.0")}</div><div class="toolbar">${button("刷新画布", "gtm.canvas.refresh", {}, "text")}${button("新建地址池", "gtm.create", { kind: "pools" }, "text", "plus")}${button("新建地址", "gtm.create", { kind: "addresses" }, "text", "plus")}</div></header><div class="gtm-workspace ${editor || opening ? "editing" : ""}"><div class="gtm-canvas" aria-label="GTM 关联画布"><div class="gtm-canvas-tools"><span class="gtm-canvas-hint">点击节点编辑 · 双指缩放画布</span><div class="gtm-zoom-controls" aria-label="画布缩放"><button type="button" class="button text" data-action="gtm.zoom.out" aria-label="缩小画布">−</button><button type="button" class="button text" data-action="gtm.zoom.reset" aria-label="重置画布缩放">100%</button><button type="button" class="button text" data-action="gtm.zoom.in" aria-label="放大画布">＋</button></div></div><div class="gtm-zoom-surface"><div class="gtm-graph gtm-graph-${kind}">${graph}</div></div></div>${inspectorShell()}</div></section>`;
+    return `<section class="gtm-workbench"><header class="gtm-workbench-head"><div class="toolbar">${button("返回列表", "gtm.close", {}, "text")}<strong>${e(gtmName(resource))}</strong>${badge("GTM 3.0")}</div><div class="toolbar">${button("刷新画布", "gtm.canvas.refresh", {}, "text")}${button("新建地址池", "gtm.create", { kind: "pools" }, "text", "plus")}${button("新建地址", "gtm.create", { kind: "addresses" }, "text", "plus")}</div></header><div class="gtm-canvas-tools"><span class="gtm-canvas-hint">点击节点编辑 · 双指缩放画布</span><div class="gtm-zoom-controls" aria-label="画布缩放"><button type="button" class="button text" data-action="gtm.zoom.out" aria-label="缩小画布">−</button><button type="button" class="button text" data-action="gtm.zoom.reset" aria-label="重置画布缩放">100%</button><button type="button" class="button text" data-action="gtm.zoom.in" aria-label="放大画布">＋</button></div></div><div class="gtm-workspace ${editor || opening ? "editing" : ""}"><div class="gtm-canvas" aria-label="GTM 关联画布"><div class="gtm-zoom-surface"><div class="gtm-graph gtm-graph-${kind}">${graph}</div></div></div>${inspectorShell()}</div></section>`;
   }
   function view(c) {
     nameIndex = null;

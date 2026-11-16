@@ -2120,12 +2120,9 @@ body:has(.gtm-drawer[open]) {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  position: sticky;
-  left: 0;
-  top: 0;
-  z-index: 4;
   background: var(--bg);
-  margin-bottom: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
 }
 .gtm-canvas-tools .gtm-canvas-hint {
   margin-bottom: 0;
