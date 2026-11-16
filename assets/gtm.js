@@ -465,32 +465,59 @@ export function createGtm({ api, ctx, render, queryResources }) {
     c.gtmCatalog ??= await api("gtm.catalog", { account_id: c.account });
     return c.gtmCatalog;
   }
+  function optionTTL(section) {
+    return ["nodes", "lines"].includes(section) ? 600000 : 30000;
+  }
+  function cachedOptions(section) {
+    const entry = ctx().gtmOptions?.[`${ctx().account}:${section}`];
+    return entry?.data && Date.now() - entry.time < optionTTL(section)
+      ? entry.data
+      : null;
+  }
   async function options(operation, section) {
     const c = ctx(),
       account = c.account;
     c.gtmOptions ??= {};
-    const key = `${account}:${section}`;
-    const cached = c.gtmOptions[key];
+    const key = `${account}:${section}`,
+      cached = c.gtmOptions[key];
     if (
       cached &&
-      Date.now() - cached.time < (section === "lines" ? 600000 : 30000)
+      (cached.pending || Date.now() - cached.time < optionTTL(section))
     )
       return cached.promise;
-    const promise = api("gtm.options", {
-      account_id: account,
-      operation,
-      unified: true,
-      section,
-    });
-    c.gtmOptions[key] = { time: Date.now(), promise };
+    const entry = { time: Date.now(), pending: true };
+    entry.promise = api(
+      "gtm.options",
+      { account_id: account, operation, unified: true, section },
+      { background: true },
+    );
+    c.gtmOptions[key] = entry;
     try {
-      const result = await promise;
-      if (Object.keys(result.errors || {}).length) delete c.gtmOptions[key];
+      const result = await entry.promise;
+      entry.pending = false;
+      entry.time = Date.now();
+      if (Object.keys(result.errors || {}).length) {
+        if (c.gtmOptions?.[key] === entry) delete c.gtmOptions[key];
+      } else entry.data = result;
       return result;
     } catch (error) {
-      delete c.gtmOptions[key];
+      if (c.gtmOptions?.[key] === entry) delete c.gtmOptions[key];
       throw error;
     }
+  }
+  function optionSections(
+    fields,
+    create = false,
+    nested = false,
+    found = new Set(),
+  ) {
+    for (const [key, spec] of Object.entries(fields)) {
+      if ((nested || create) && sourceKind(key)) found.add(sourceKind(key));
+      if (key === "IspCityNodes") found.add("nodes");
+      if (spec.items?.properties)
+        optionSections(spec.items.properties, create, true, found);
+    }
+    return found;
   }
   function knownResources() {
     if (nameIndex) return nameIndex;
@@ -499,17 +526,19 @@ export function createGtm({ api, ctx, render, queryResources }) {
       if (!row || typeof row !== "object") return;
       for (const key of Object.values(ids).concat("InstanceId"))
         if (row[key]) found.set(row[key], row);
-      for (const task of row.HealthTasks || [])
+      for (const task of rows(row, "HealthTasks", "HealthTask"))
         if (task.TemplateName)
           found.set(task.TemplateId, { Name: task.TemplateName });
       for (const child of [
-        ...(row.AddressPools || []),
-        ...(row.Addresses || []),
+        ...rows(row, "AddressPools", "AddressPool"),
+        ...rows(row, "Addresses", "Address"),
       ])
         walk(child);
     };
-    for (const row of ctx().items || []) walk(normalizeGtm(row));
-    if (ctx().gtmDetail) walk(normalizeGtm(ctx().gtmDetail.resource));
+    for (const row of ctx().items || []) walk(row);
+    if (ctx().gtmDetail) walk(ctx().gtmDetail.resource);
+    for (const section of ["pools", "addresses", "monitors", "instances"])
+      for (const row of cachedOptions(section)?.[section] || []) walk(row);
     if (editor) {
       walk(editor.resource);
       for (const key of ["pools", "addresses", "monitors", "instances"])
@@ -527,6 +556,20 @@ export function createGtm({ api, ctx, render, queryResources }) {
       row?.Address ||
       "未命名资源"
     );
+  }
+  function refreshTemplateLabels() {
+    const names = new Map(
+      (cachedOptions("monitors")?.monitors || []).map((row) => [
+        row.TemplateId,
+        displayName(row),
+      ]),
+    );
+    for (const node of document.querySelectorAll("[data-gtm-template]")) {
+      const label = names.get(node.dataset.gtmTemplate);
+      if (label)
+        node.textContent =
+          label + (node.dataset.port ? ":" + node.dataset.port : "");
+    }
   }
   function relationStrategy() {
     return (
@@ -549,11 +592,135 @@ export function createGtm({ api, ctx, render, queryResources }) {
     const current = editor;
     const result = await options(current.operation, section);
     if (editor !== current) return;
-    Object.assign(editor.options, result);
+    const errors = { ...editor.options.errors, ...result.errors };
+    if (!result.errors?.[section]) delete errors[section];
+    Object.assign(editor.options, result, { errors });
     nameIndex = null;
     if (result.errors?.[section]) throw new Error(result.errors[section]);
+    delete editor.optionErrors?.[section];
+    if (
+      ["nodes", "lines"].includes(section) &&
+      !["nodes", "lines"].some((key) => editor.optionErrors?.[key])
+    ) {
+      const status = document.querySelector("#gtm-aux-status");
+      if (status) status.textContent = "";
+    }
     if (section === "lines") refreshLineTags();
     return result;
+  }
+  function refreshResourceOptions(section) {
+    const form = document.querySelector("#gtm-editor-form");
+    if (!form || !editor) return;
+    for (const container of form.querySelectorAll(
+      `[data-gtm-source="${section}"]`,
+    )) {
+      const input = container.querySelector("select"),
+        path = JSON.parse(container.dataset.gtmPath),
+        selected = input.value;
+      const values = choices(path.at(-1), {}, selected) || [];
+      input.replaceChildren(
+        ...(container.dataset.required === "1"
+          ? [new Option("请选择…", "")]
+          : [new Option("未设置", "")]),
+        ...values.map((row) => new Option(row.label, row.value)),
+      );
+      if (editor.optionLoads?.[section]) {
+        const loading = new Option("正在加载其他选项…", "__gtm_loading");
+        loading.disabled = true;
+        input.append(loading);
+      }
+      input.value = selected;
+      input.setAttribute(
+        "aria-busy",
+        editor.optionLoads?.[section] ? "true" : "false",
+      );
+      container.dataset.loaded =
+        Object.hasOwn(editor.options, section) &&
+        !editor.optionErrors?.[section]
+          ? "1"
+          : "0";
+      let status = container.querySelector(".gtm-option-status");
+      if (!status) {
+        status = document.createElement("div");
+        status.className = "gtm-option-status help";
+        status.setAttribute("role", "status");
+        container.append(status);
+      }
+      status.innerHTML = editor.optionErrors?.[section]
+        ? e(editor.optionErrors[section]) +
+          button("重试", "gtm.options.retry", { section }, "text")
+        : "";
+    }
+  }
+  function requestEditorOptions(section, retry = false) {
+    const current = editor;
+    if (!current) return;
+    current.optionLoads ??= {};
+    current.optionErrors ??= {};
+    if (retry) {
+      delete ctx().gtmOptions?.[`${current.account}:${section}`];
+      delete current.optionErrors[section];
+    }
+    if (current.optionLoads[section]) return current.optionLoads[section];
+    if (
+      !retry &&
+      Object.hasOwn(current.options, section) &&
+      !current.optionErrors[section]
+    ) {
+      refreshResourceOptions(section);
+      return Promise.resolve();
+    }
+    const promise = loadOptions(section)
+      .then(() => {
+        if (editor !== current) return;
+        delete current.optionErrors[section];
+        const form = document.querySelector("#gtm-editor-form");
+        if (section === "nodes" && form) {
+          current.values = collect(form);
+          const container = document.createElement("div");
+          container.innerHTML = controls(
+            { IspCityNodes: current.spec.fields.IspCityNodes },
+            current.values,
+          );
+          form
+            .querySelector("[data-gtm-nodes]")
+            ?.replaceWith(container.firstElementChild);
+        }
+        if (section === "lines") {
+          refreshLineTags();
+          drawLines();
+        }
+      })
+      .catch((error) => {
+        if (editor !== current) return;
+        current.optionErrors[section] = error.message;
+        if (["lines", "nodes"].includes(section)) {
+          const status = document.querySelector("#gtm-aux-status");
+          if (status)
+            status.innerHTML =
+              e(error.message) +
+              button("重试", "gtm.options.retry", { section }, "text");
+        }
+      })
+      .finally(() => {
+        if (editor === current) {
+          delete current.optionLoads[section];
+          refreshResourceOptions(section);
+        }
+      });
+    current.optionLoads[section] = promise;
+    refreshResourceOptions(section);
+    return promise;
+  }
+  function prepareEditorOptions(form) {
+    const sections = new Set(
+      [...form.querySelectorAll("[data-gtm-source]")].map(
+        (node) => node.dataset.gtmSource,
+      ),
+    );
+    if (form.querySelector("[data-gtm-nodes]")) sections.add("nodes");
+    if (form.querySelector("[data-lines-path]")) sections.add("lines");
+    for (const section of sections) requestEditorOptions(section);
   }
   function choices(key, spec, value) {
     const o = editor.options;
@@ -586,10 +753,11 @@ export function createGtm({ api, ctx, render, queryResources }) {
         );
       if (
         key === "TemplateId" &&
-        ["IPv4", "IPv6"].includes(editor.resource.Type)
+        ["IPv4", "IPv6"].includes(editor.values.Type || editor.resource.Type)
       )
         candidates = candidates.filter(
-          (row) => row.IpVersion === editor.resource.Type,
+          (row) =>
+            row.IpVersion === (editor.values.Type || editor.resource.Type),
         );
       result = candidates.map((row) => ({
         value: row[source[1]],
@@ -611,7 +779,15 @@ export function createGtm({ api, ctx, render, queryResources }) {
     )
       result.unshift({
         value,
-        label: displayName(knownResources().get(value)),
+        label: !sourceKind(key)
+          ? (enums[value] || String(value)) + "（当前值）"
+          : knownResources().has(value)
+            ? displayName(knownResources().get(value))
+            : editor.optionErrors?.[sourceKind(key)]
+              ? "名称加载失败（当前关联已保留）"
+              : editor.options[sourceKind(key)]
+                ? "当前关联项（名称暂不可用）"
+                : `正在加载${{ pools: "地址池", addresses: "地址", monitors: "探测模板", instances: "实例" }[sourceKind(key)] || "名称"}…`,
       });
     return result;
   }
@@ -937,14 +1113,15 @@ export function createGtm({ api, ctx, render, queryResources }) {
       ? oldBox.querySelector(".gtm-inspector-body")
       : oldBox;
     const keepPosition = oldBox?.dataset.session === String(currentSession);
-    const inspectorScroll = keepPosition
-      ? {
-          top: oldScroller.scrollTop,
-          left: oldScroller.scrollLeft,
-          x: window.scrollX,
-          y: window.scrollY,
-        }
-      : null;
+    const inspectorScroll =
+      keepPosition && oldBox.dataset.loading !== "1"
+        ? {
+            top: oldScroller.scrollTop,
+            left: oldScroller.scrollLeft,
+            x: window.scrollX,
+            y: window.scrollY,
+          }
+        : null;
     const active =
       keepPosition &&
       oldBox.dataset.loading !== "1" &&
@@ -1228,44 +1405,17 @@ export function createGtm({ api, ctx, render, queryResources }) {
           .querySelector(".gtm-line-tags")
           .replaceWith(tags.querySelector(".gtm-line-tags"));
       });
-    form.addEventListener("focusin", async (event) => {
+    form.addEventListener("focusin", (event) => {
       const container = event.target.closest("[data-gtm-source]");
-      if (
-        !container ||
-        container.dataset.loaded === "1" ||
-        container.dataset.loading
-      )
-        return;
-      container.dataset.loading = "1";
-      const status = form.querySelector("#gtm-aux-status");
-      status.textContent = "正在加载可选资源…";
-      try {
-        await loadOptions(container.dataset.gtmSource);
-        if (!form.isConnected) return;
-        const path = JSON.parse(container.dataset.gtmPath),
-          key = path.at(-1),
-          input = event.target;
-        const values = choices(key, {}, input.value) || [],
-          selected = input.value;
-        input.replaceChildren(
-          ...(container.dataset.required === "1"
-            ? []
-            : [new Option("未设置", "")]),
-          ...values.map((row) => new Option(row.label, row.value)),
-        );
-        input.value = selected;
-        container.dataset.loaded = "1";
-        status.textContent = "";
-      } catch (error) {
-        if (form.isConnected) status.textContent = error.message;
-      } finally {
-        delete container.dataset.loading;
-      }
+      if (container && container.dataset.loaded !== "1")
+        requestEditorOptions(container.dataset.gtmSource);
     });
+    prepareEditorOptions(form);
     for (const key of [
       "AddressPoolLbStrategy",
       "AddressLbStrategy",
       "AvailableMode",
+      "Type",
     ])
       form
         .querySelector(`[data-gtm-path='["${key}"]'] select`)
@@ -1430,12 +1580,22 @@ export function createGtm({ api, ctx, render, queryResources }) {
             }
           : sourceOp;
       if (!op) throw new Error("不支持此操作");
+      const needed = optionSections(op.fields, op.create);
+      for (const section of needed) options(operation, section).catch(() => {});
       const known = knownResources().get(id);
       const detail = op.create
         ? { resource: {}, token: null }
         : await resourceDetail(op.kind, id, { instance: known?.InstanceId });
       const resource = normalizeGtm(detail.resource),
         opts = { errors: {} };
+      for (const section of needed)
+        Object.assign(opts, cachedOptions(section) || {});
+      const strategy =
+        resource.AddressPoolLbStrategy || resource.AddressLbStrategy;
+      if (strategy === "source_nearest") {
+        const cached = cachedOptions("lines");
+        if (cached) Object.assign(opts, cached);
+      }
       if (requested !== session || selectedAccount !== ctx().account) return;
       opening = null;
       editor = {
@@ -1476,27 +1636,6 @@ export function createGtm({ api, ctx, render, queryResources }) {
       }
       editor.baseline = structuredClone(editor.values);
       drawEditor();
-      // Only monitor forms need auxiliary data without an explicit user interaction.
-      if (op.fields.IspCityNodes)
-        loadOptions("nodes")
-          .then(() => {
-            if (editor?.session !== requested) return;
-            const form = document.querySelector("#gtm-editor-form");
-            editor.values = collect(form);
-            const container = document.createElement("div");
-            container.innerHTML = controls(
-              { IspCityNodes: editor.spec.fields.IspCityNodes },
-              editor.values,
-            );
-            form
-              .querySelector("[data-gtm-nodes]")
-              ?.replaceWith(container.firstElementChild);
-          })
-          .catch((error) => {
-            if (editor?.session === requested)
-              document.querySelector("#gtm-aux-status").textContent =
-                error.message;
-          });
     } catch (error) {
       if (session === requested) {
         actions["gtm.inspector.close"]();
@@ -1525,6 +1664,8 @@ export function createGtm({ api, ctx, render, queryResources }) {
     notice.setAttribute("role", "status");
     notice.textContent = "正在读取云端画布…";
     document.querySelector(".gtm-page")?.prepend(notice);
+    if (["list", "pools", "addresses"].includes(kind))
+      options("UpdateCloudGtmAddress", "monitors").catch(() => {});
     try {
       const [detail] = await Promise.all([
         resourceDetail(kind, id, { fresh, instance: known?.InstanceId }),
@@ -1587,7 +1728,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
       const selected =
         editor?.spec.kind === type &&
         editor.resource[ids[type]] === row[ids[type]];
-      return `<article role="button" tabindex="0" aria-label="编辑 ${e(gtmName(row))}" data-action="gtm.edit" data-kind="${type}" data-id="${e(row[ids[type]])}" data-operation="${opFor(type, "basic")}" class="gtm-node gtm-node-${type} gtm-state-${gtmStatus(row)} ${selected ? "selected" : ""}"><div class="gtm-node-title"><span class="gtm-node-name">${e(gtmName(row))}</span><span class="gtm-kind">${e(kinds[type])}</span></div><div class="gtm-node-meta">${stateBadge(row)}${row.Ttl ? `<span>TTL ${e(row.Ttl)}s</span>` : ""}</div>${row.Address ? `<div class="gtm-node-address mono">${e(row.Address)}</div>` : ""}<div class="gtm-node-meta gtm-node-policy">${["sequence", "source_nearest"].includes(parentStrategy) && row.SerialNumber !== undefined ? `<span>序 ${e(row.SerialNumber)}</span>` : ""}${parentStrategy === "weight" && row.WeightValue !== undefined ? `<span>权重 ${e(row.WeightValue)}</span>` : ""}${enums[row.AddressPoolLbStrategy || row.AddressLbStrategy] ? `<span>${e(enums[row.AddressPoolLbStrategy || row.AddressLbStrategy])}</span>` : ""}</div>${type === "addresses" && row.HealthTasks?.length ? `<div class="gtm-monitor-chips">${row.HealthTasks.map((task) => `<span>${e(task.TemplateName || displayName(knownResources().get(task.TemplateId)))}${task.Port !== undefined ? ":" + e(task.Port) : ""}</span>`).join("")}</div>` : ""}</article>`;
+      return `<article role="button" tabindex="0" aria-label="编辑 ${e(gtmName(row))}" data-action="gtm.edit" data-kind="${type}" data-id="${e(row[ids[type]])}" data-operation="${opFor(type, "basic")}" class="gtm-node gtm-node-${type} gtm-state-${gtmStatus(row)} ${selected ? "selected" : ""}"><div class="gtm-node-title"><span class="gtm-node-name">${e(gtmName(row))}</span><span class="gtm-kind">${e(kinds[type])}</span></div><div class="gtm-node-meta">${stateBadge(row)}${row.Ttl ? `<span>TTL ${e(row.Ttl)}s</span>` : ""}</div>${row.Address ? `<div class="gtm-node-address mono">${e(row.Address)}</div>` : ""}<div class="gtm-node-meta gtm-node-policy">${["sequence", "source_nearest"].includes(parentStrategy) && row.SerialNumber !== undefined ? `<span>序 ${e(row.SerialNumber)}</span>` : ""}${parentStrategy === "weight" && row.WeightValue !== undefined ? `<span>权重 ${e(row.WeightValue)}</span>` : ""}${enums[row.AddressPoolLbStrategy || row.AddressLbStrategy] ? `<span>${e(enums[row.AddressPoolLbStrategy || row.AddressLbStrategy])}</span>` : ""}</div>${type === "addresses" && row.HealthTasks?.length ? `<div class="gtm-monitor-chips">${row.HealthTasks.map((task) => `<span data-gtm-template="${e(task.TemplateId)}" data-port="${e(task.Port ?? "")}">${e(task.TemplateName || displayName(knownResources().get(task.TemplateId)))}${task.Port !== undefined ? ":" + e(task.Port) : ""}</span>`).join("")}</div>` : ""}</article>`;
     };
     const branch = (pool) =>
       `<section class="gtm-lane"><div class="gtm-pool-column">${card("pools", pool, resource.AddressPoolLbStrategy)}</div><div class="gtm-address-grid gtm-tree-addresses">${(pool.Addresses || []).map((address) => `<div class="gtm-address-leaf">${card("addresses", address, pool.AddressLbStrategy)}</div>`).join("") || '<span class="help">暂无地址，点击地址池，在编辑区添加。</span>'}</div></section>`;
@@ -1619,8 +1760,10 @@ export function createGtm({ api, ctx, render, queryResources }) {
           ctx().account === account &&
           !ctx().gtmDetail &&
           !editor
-        )
+        ) {
           warmDetail("list", items[0].ConfigId, items[0].InstanceId);
+          options("UpdateCloudGtmAddress", "monitors").catch(() => {});
+        }
       }, 200);
     }
     const tabs = `<div class="tabs">${Object.entries({
@@ -1690,6 +1833,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
     );
   }
   const actions = {
+    "gtm.options.retry": (d) => requestEditorOptions(d.section, true),
     "gtm.lines.open": async (d) => {
       editor.values = collect(document.querySelector("#gtm-editor-form"));
       editor.linePath = editor.linePath === d.path ? null : d.path;
@@ -1799,6 +1943,8 @@ export function createGtm({ api, ctx, render, queryResources }) {
     "gtm.canvas.refresh": () => {
       const detail = ctx().gtmDetail;
       detailCache.clear();
+      delete ctx().gtmOptions;
+      nameIndex = null;
       return open(detail.kind, detail.resource[ids[detail.kind]], true);
     },
     "gtm.row.add": (d) => {

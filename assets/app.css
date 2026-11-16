@@ -1962,3 +1962,9 @@ body:has(.gtm-drawer[open]) {
   flex: 1;
   color: var(--muted);
 }
+
+.gtm-monitor-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
