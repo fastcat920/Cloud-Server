@@ -91,6 +91,18 @@ try {
  verifyGtm($associationOnly['parameters']['Name']===$d['resource']['Name'] && $associationOnly['parameters']['Address']===$d['resource']['Address'],'Association-only updates must freeze current name and address to match successful console requests');
  $clearTasks=$gtm->preview($account,'UpdateCloudGtmAddress',['AddressId'=>'addr-1','HealthTasks'=>[]],$d['token']);
  verifyGtm($clearTasks['parameters']['HealthTasks']===[] && $clearTasks['parameters']['Address']===$d['resource']['Address'],'Removing all tasks must preserve address information');
+ // Regression: an IP-only edit must preserve the existing health check, not send only Name/Address.
+ $raw=json_decode(substr(file_get_contents($directory.'/gtm-fixture.php'),strlen(Store::GUARD)),true);
+ $raw['addresses']['addr-1']['AvailableMode']='manual';$raw['addresses']['addr-1']['ManualAvailableStatus']='unavailable';file_put_contents($directory.'/gtm-fixture.php',Store::GUARD.json_encode($raw));
+ $d=$gtm->detail($account,'addresses','addr-1');
+ $ipOnly=$gtm->preview($account,'UpdateCloudGtmAddress',['AddressId'=>'addr-1','Address'=>'200.180.161.87','Name'=>$d['resource']['Name']],$d['token']);
+ verifyGtm($ipOnly['parameters']['HealthTasks']===[['TemplateId'=>'mtp-1','Port'=>443]] && $ipOnly['parameters']['HealthJudgement']==='any_ok','IP-only edit must freeze existing task IDs, ports and judgement, stripping read-only names/status');
+ verifyGtm(!isset($ipOnly['parameters']['AvailableMode']) && !isset($ipOnly['parameters']['ManualAvailableStatus']),'Base update must not change failover mode');
+ $legacy=json_decode($security->decrypt($ipOnly['ticket']),true);unset($legacy['parameters']['HealthTasks']);
+ try{$gtm->apply($account,$security->encrypt(json_encode($legacy)));throw new LogicException('Incomplete old ticket submitted');}catch(ApiError $e){verifyGtm($e->status===409,'Old ticket must be regenerated rather than silently changed');}
+ Http::$transport=function($method,$url,$headers,$body)use($originalTransport){parse_str(parse_url($url,PHP_URL_QUERY)??'',$q);if(($q['Action']??'')==='UpdateCloudGtmAddress' && (!isset($q['HealthTasks'],$q['HealthJudgement'])))return ['status'=>400,'body'=>json_encode(['Code'=>'ParamsError','Message'=>'params error.'])];return $originalTransport($method,$url,$headers,$body);};
+ $saved=$gtm->apply($account,$ipOnly['ticket']);verifyGtm($saved['verification']==='confirmed' && $saved['resource']['AvailableMode']==='manual' && $saved['resource']['ManualAvailableStatus']==='unavailable','IP-only update verifies health preservation without changing manual state');
+ Http::$transport=$originalTransport;$d=$gtm->detail($account,'addresses','addr-1');
  $paired=$gtm->preview($account,'UpdateCloudGtmAddress',['AddressId'=>'addr-1','Address'=>'130.12.18.223','HealthTasks'=>[['TemplateId'=>'mtp-1','Port'=>30001]]],$d['token']);
  verifyGtm($paired['parameters']['Address']==='130.12.18.223' && $paired['parameters']['Name']===$d['resource']['Name'],'Explicit address edits must not be replaced by baseline values');
  verifyGtm($paired['parameters']['HealthJudgement']===$d['resource']['HealthJudgement'],'Health task changes must freeze the preserved health judgement into preview');

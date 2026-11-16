@@ -247,6 +247,11 @@ final class Gtm
                 if (!array_key_exists($field,$params)) $params[$field]=$before[$field] ?? null;
                 if (!is_string($params[$field]) || $params[$field]==='') throw new ApiError('云端地址名称或服务地址缺失，请刷新后重新编辑');
             }
+            if (!array_key_exists('HealthTasks',$params) && array_key_exists('HealthTasks',$before)) {
+                $params['HealthTasks']=self::savedHealthTasks($before['HealthTasks']);
+            }
+            if (!array_key_exists('HealthJudgement',$params) && isset($before['HealthJudgement'])) $params['HealthJudgement']=$before['HealthJudgement'];
+            self::validateFields($params,$spec['fields']);
         }
         if ($kind==='addresses' && !empty($params['HealthTasks']) && !isset($params['HealthJudgement'])) {
             $params['HealthJudgement']=$before['HealthJudgement'] ?? null;
@@ -313,6 +318,22 @@ final class Gtm
         }
         return $previous+['steps'=>$results];
     }
+    private static function savedHealthTasks(mixed $value): array
+    {
+        if (!is_array($value)) throw new ApiError('云端探测任务格式异常，请刷新后重试');
+        $tasks=array_is_list($value)?$value:($value['HealthTask'] ?? null);
+        if (!is_array($tasks) || !array_is_list($tasks)) throw new ApiError('云端探测任务格式异常，请刷新后重试');
+        return array_map(static function($task) {
+            if (!is_array($task) || !is_string($task['TemplateId'] ?? null)) throw new ApiError('云端探测模板标识缺失，请刷新后重试');
+            $saved=['TemplateId'=>$task['TemplateId']];
+            if (isset($task['Port']) && $task['Port']!==0 && $task['Port']!=='0') {
+                $port=filter_var($task['Port'],FILTER_VALIDATE_INT);
+                if ($port===false) throw new ApiError('云端探测端口格式异常，请刷新后重试');
+                $saved['Port']=$port;
+            }
+            return $saved;
+        },$tasks);
+    }
     private function relationships(array $account,array $spec,array $params,array $before): void
     {
         foreach (['AddressPools'=>['AddressPoolId','pools'],'Addresses'=>['AddressId','addresses']] as $field=>[$idField,$kind]) {
@@ -340,7 +361,12 @@ final class Gtm
         }
         $ports=[];$templates=[];
         $addressType=$params['Type'] ?? $before['Type'] ?? null;
+        $unchangedTasks=false;
+        if (array_key_exists('HealthTasks',$before)) {
+            try {$unchangedTasks=($params['HealthTasks'] ?? null)==self::savedHealthTasks($before['HealthTasks']);} catch (ApiError) { /* Explicit replacement can repair malformed old tasks. */ }
+        }
         foreach ($params['HealthTasks'] ?? [] as $task) {
+            if ($unchangedTasks) { if(isset($task['Port']))$ports[$task['Port']]=true;continue; }
             if (empty($task['TemplateId'])) throw new ApiError('请选择探测模板');
             $template=$templates[$task['TemplateId']] ??= $this->detail($account,'monitors',$task['TemplateId'])['resource'];
             if (in_array($addressType,['IPv4','IPv6'],true) && ($template['IpVersion'] ?? null)!==$addressType) throw new ApiError('探测模板的 IP 版本与服务地址不匹配');
@@ -365,6 +391,7 @@ final class Gtm
             foreach ($this->store->read()['gtm_changes'] ?? [] as $change) if ($change['nonce']===$ticket['nonce'] && $change['status']==='success') return $change['result'];
             $operation=$ticket['operation'];$spec=self::catalog()[$operation];$params=$ticket['parameters'];$kind=$spec['kind'];$idField=self::KINDS[$kind][4];$id=$params[$idField] ?? '';
             if ($operation==='UpdateCloudGtmAddress' && (empty($params['Name']) || empty($params['Address']))) throw new ApiError('此预览缺少完整地址信息，请返回编辑重新预览',409);
+            if ($operation==='UpdateCloudGtmAddress' && array_key_exists('HealthTasks',$ticket['before']) && !array_key_exists('HealthTasks',$params)) throw new ApiError('此提交缺少原有探测配置，请重新打开地址后提交',409);
             if ($kind==='addresses' && !empty($params['HealthTasks']) && !isset($params['HealthJudgement'])) throw new ApiError('此预览缺少健康判定条件，请返回编辑重新预览',409);
             if (!$spec['create']) {
                 $current=$this->detail($account,$kind,$id,$params['InstanceId'] ?? $ticket['before']['InstanceId'] ?? '');

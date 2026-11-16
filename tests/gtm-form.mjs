@@ -186,3 +186,5 @@ assert.equal(initial(explicitFields,{AvailableMode:'unknown'},false).AvailableMo
 assert.equal(gtmStatus({HealthStatus:'ok_no_monitor'}),'good');
 assert.equal(gtmStatus({HealthStatus:'ok_no_monitor',AvailableMode:'manual',ManualAvailableStatus:'unavailable'}),'bad');
 assert.equal(gtmStateBadge({HealthStatus:'ok_no_monitor',AvailableMode:'manual',ManualAvailableStatus:'unavailable'}).replace(/<[^>]*>/g,''),'异常');
+
+assert.deepEqual(gtmUpdateParameters({AddressId:{type:'string',required:true},Address:{type:'string'},HealthTasks:{type:'array'},HealthJudgement:{type:'string'}},{AddressId:'a',Address:'143.20.71.28',HealthTasks:[{TemplateId:'t',Port:30001}],HealthJudgement:'any_ok'},{AddressId:'a',Address:'200.180.161.87',HealthTasks:[{TemplateId:'t',Port:30001}],HealthJudgement:'any_ok'}),{AddressId:'a',Address:'200.180.161.87',HealthJudgement:'any_ok'});

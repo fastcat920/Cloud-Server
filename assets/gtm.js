@@ -361,7 +361,7 @@ export function gtmUpdateParameters(fields, before, parameters) {
   )
     patch.SequenceLbStrategyMode = parameters.SequenceLbStrategyMode;
   if (
-    patch.HealthTasks?.length &&
+    fields.HealthTasks &&
     fields.HealthJudgement &&
     parameters.HealthJudgement
   )
