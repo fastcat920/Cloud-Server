@@ -233,6 +233,35 @@ export function gtmChanges(before, parameters, fields = {}, deleting = false) {
     if (!identifiers.has(key)) walk(before[key], value, key, fields[key]);
   return result;
 }
+export const gtmProbeKey = (node) =>
+  JSON.stringify([String(node.CityCode), String(node.IspCode)]);
+export function gtmProbeNodes(data, ip = "IPv4") {
+  const prefix = ip === "IPv6" ? "Ipv6" : "Ipv4";
+  const unique = new Map();
+  for (const node of rows(
+    data,
+    prefix + "IspCityNodes",
+    prefix + "IspCityNode",
+  )) {
+    if (
+      !node ||
+      typeof node !== "object" ||
+      node.CityCode === undefined ||
+      node.IspCode === undefined
+    )
+      continue;
+    const value = {
+      ...node,
+      CityCode: String(node.CityCode),
+      IspCode: String(node.IspCode),
+      GroupName: node.GroupName || "其他节点",
+      CityName: node.CityName || "未知城市",
+      IspName: node.IspName || "未知运营商",
+    };
+    if (!unique.has(gtmProbeKey(value))) unique.set(gtmProbeKey(value), value);
+  }
+  return [...unique.values()];
+}
 export function gtmUpdateParameters(fields, before, parameters) {
   const identities = new Set([
     "ConfigId",
@@ -676,15 +705,8 @@ export function createGtm({ api, ctx, render, queryResources }) {
         delete current.optionErrors[section];
         const form = document.querySelector("#gtm-editor-form");
         if (section === "nodes" && form) {
-          current.values = collect(form);
-          const container = document.createElement("div");
-          container.innerHTML = controls(
-            { IspCityNodes: current.spec.fields.IspCityNodes },
-            current.values,
-          );
-          form
-            .querySelector("[data-gtm-nodes]")
-            ?.replaceWith(container.firstElementChild);
+          refreshNodeTags();
+          drawNodes();
         }
         if (section === "lines") {
           refreshLineTags();
@@ -706,10 +728,15 @@ export function createGtm({ api, ctx, render, queryResources }) {
         if (editor === current) {
           delete current.optionLoads[section];
           refreshResourceOptions(section);
+          if (section === "nodes") {
+            refreshNodeTags();
+            drawNodes();
+          }
         }
       });
     current.optionLoads[section] = promise;
     refreshResourceOptions(section);
+    if (section === "nodes") drawNodes();
     return promise;
   }
   function prepareEditorOptions(form) {
@@ -856,6 +883,119 @@ export function createGtm({ api, ctx, render, queryResources }) {
     const candidates = filtered.slice(0, 80);
     target.innerHTML = `<nav class="gtm-line-breadcrumb" aria-label="线路层级">${button("全部线路", "gtm.lines.branch", { code: "" }, "text")}${trail.map((row) => button(row.Name || row.DisplayName, "gtm.lines.branch", { code: row.Code }, "text")).join("")}</nav><div class="gtm-line-list">${candidates.map((row) => `<div class="gtm-line-option"><label class="check"><input type="checkbox" data-line-code="${e(row.Code)}" ${values.includes(row.Code) ? "checked" : ""} ${row.IsAvailable === false || row.IsAvailable === "false" ? "disabled" : ""}>${e(query ? row.DisplayName || row.Name : row.Name || row.DisplayName)}</label>${children.has(row.Code) ? button("展开 ›", "gtm.lines.branch", { code: row.Code }, "text") : ""}</div>`).join("") || '<p class="help">没有匹配的线路</p>'}</div>${filtered.length > 80 ? '<p class="help">当前显示前 80 项，请输入更具体的地区或运营商。</p>' : ""}`;
   }
+  function currentProbeNodes() {
+    return gtmProbeNodes(
+      editor.options.nodes,
+      editor.values.IpVersion || editor.resource.IpVersion,
+    );
+  }
+  function nodeTags() {
+    const names = new Map(
+      currentProbeNodes().map((node) => [
+        gtmProbeKey(node),
+        [node.GroupName, node.CityName, node.IspName].join(" / "),
+      ]),
+    );
+    for (const node of editor.resource.IspCityNodes || []) {
+      const label = [node.GroupName, node.CityName, node.IspName]
+        .filter(Boolean)
+        .join(" / ");
+      if (label && !names.has(gtmProbeKey(node)))
+        names.set(gtmProbeKey(node), label);
+    }
+    return (
+      (editor.values.IspCityNodes || [])
+        .map(
+          (node, index) =>
+            `<span class="gtm-line-tag">${e(names.get(gtmProbeKey(node)) || "已选节点（名称暂不可用）")}${button("×", "gtm.nodes.remove", { index }, "text danger")}</span>`,
+        )
+        .join("") || '<span class="help">尚未选择探测节点</span>'
+    );
+  }
+  function nodeControl(label) {
+    return `<fieldset class="gtm-fieldset" data-gtm-nodes><legend>${e(label || "探测节点")}</legend><div class="gtm-node-tags gtm-line-tags">${nodeTags()}</div>${button(editor.nodesOpen ? "收起选择" : "选择探测节点", "gtm.nodes.open", {}, "text")}${editor.nodesOpen ? '<div class="gtm-line-menu"><input type="search" class="gtm-line-search gtm-node-search" placeholder="搜索分组、城市或运营商" aria-label="搜索探测节点"><div class="gtm-node-results" aria-live="polite"></div></div>' : ""}</fieldset>`;
+  }
+  function refreshNodeTags() {
+    const target = document.querySelector(".gtm-node-tags");
+    if (target) target.innerHTML = nodeTags();
+  }
+  function drawNodes(
+    query = document.querySelector(".gtm-node-search")?.value || "",
+  ) {
+    const target = document.querySelector(".gtm-node-results");
+    if (!target || !editor) return;
+    if (editor.optionErrors?.nodes) {
+      target.innerHTML = `<p class="notice warn">${e(editor.optionErrors.nodes)}</p>${button("重试", "gtm.options.retry", { section: "nodes" }, "text")}`;
+      return;
+    }
+    if (
+      !editor.options.nodes ||
+      (editor.optionLoads?.nodes && !currentProbeNodes().length)
+    ) {
+      target.innerHTML = '<p class="help">正在加载探测节点…</p>';
+      return;
+    }
+    const all = currentProbeNodes(),
+      selected = new Set((editor.values.IspCityNodes || []).map(gtmProbeKey)),
+      group = editor.nodeGroup,
+      city = editor.nodeCity;
+    const trail =
+      button("全部分组", "gtm.nodes.branch", {}, "text") +
+      (group ? button(group, "gtm.nodes.branch", { group }, "text") : "") +
+      (city
+        ? `<span>${e(all.find((node) => node.GroupName === group && node.CityCode === city)?.CityName || "城市")}</span>`
+        : "");
+    let choices;
+    if (query || (group && city)) {
+      const matches = all.filter((node) =>
+        query
+          ? [node.GroupName, node.CityName, node.IspName]
+              .join(" / ")
+              .toLowerCase()
+              .includes(query.toLowerCase())
+          : node.GroupName === group && node.CityCode === city,
+      );
+      choices =
+        matches
+          .slice(0, 80)
+          .map(
+            (node) =>
+              `<div class="gtm-line-option"><label class="check"><input type="checkbox" data-gtm-probe="${e(gtmProbeKey(node))}" ${selected.has(gtmProbeKey(node)) ? "checked" : ""}>${e(query ? [node.GroupName, node.CityName, node.IspName].join(" / ") : node.IspName)}</label></div>`,
+          )
+          .join("") || '<p class="help">没有匹配的节点</p>';
+      if (matches.length > 80)
+        choices +=
+          '<p class="help">当前显示前 80 项，请输入更具体的城市或运营商。</p>';
+    } else {
+      const branches = new Map();
+      for (const node of all.filter(
+        (node) => !group || node.GroupName === group,
+      )) {
+        const key = group ? node.CityCode : node.GroupName;
+        if (!branches.has(key))
+          branches.set(key, {
+            name: group ? node.CityName : node.GroupName,
+            count: 0,
+            selected: 0,
+          });
+        const item = branches.get(key);
+        ++item.count;
+        if (selected.has(gtmProbeKey(node))) ++item.selected;
+      }
+      choices =
+        [...branches]
+          .slice(0, 80)
+          .map(
+            ([key, item]) =>
+              `<div class="gtm-line-option"><span>${e(item.name)} <span class="help">${item.selected ? `已选 ${item.selected} / ` : ""}${item.count} 个节点</span></span>${button("展开 ›", "gtm.nodes.branch", group ? { group, city: key } : { group: key }, "text")}</div>`,
+          )
+          .join("") || '<p class="help">暂无可用探测节点</p>';
+      if (branches.size > 80)
+        choices +=
+          '<p class="help">当前显示前 80 项，可搜索其他城市或运营商。</p>';
+    }
+    target.innerHTML = `<nav class="gtm-line-breadcrumb" aria-label="探测节点层级">${trail}</nav><div class="gtm-line-list">${choices}</div>`;
+  }
   function controls(fields, value, path = []) {
     return Object.entries(fields)
       .map(([key, spec]) => {
@@ -893,38 +1033,8 @@ export function createGtm({ api, ctx, render, queryResources }) {
           return lineControl(p, Array.isArray(v) ? v : [], spec.label);
         if (spec.type === "array") {
           const items = Array.isArray(v) ? v : [];
-          if (key === "IspCityNodes") {
-            const ip =
-              editor.values.IpVersion || editor.resource.IpVersion || "IPv4";
-            const nodes =
-              ip === "IPv6"
-                ? rows(
-                    editor.options.nodes,
-                    "Ipv6IspCityNodes",
-                    "Ipv6IspCityNode",
-                  )
-                : rows(
-                    editor.options.nodes,
-                    "Ipv4IspCityNodes",
-                    "Ipv4IspCityNode",
-                  );
-            const visibleNodes = [...nodes];
-            for (const selected of items)
-              if (
-                !visibleNodes.some(
-                  (node) =>
-                    node.CityCode === selected.CityCode &&
-                    node.IspCode === selected.IspCode,
-                )
-              )
-                visibleNodes.push({
-                  ...selected,
-                  CityName:
-                    selected.CityName || `当前城市 ${selected.CityCode}`,
-                  IspName: selected.IspName || `运营商 ${selected.IspCode}`,
-                });
-            return `<fieldset class="gtm-fieldset" data-gtm-nodes><legend>${e(spec.label)}</legend>${visibleNodes.length ? visibleNodes.map((node, i) => `<label class="check"><input type="checkbox" data-gtm-node="${i}" data-city="${e(node.CityCode)}" data-isp="${e(node.IspCode)}" ${items.some((item) => item.CityCode === node.CityCode && item.IspCode === node.IspCode) ? "checked" : ""}>${e([node.GroupName, node.CityName, node.IspName].filter(Boolean).join(" / "))}</label>`).join("") : '<p class="help">' + (editor.options.nodes ? "没有可用探测节点，请检查查询权限。" : "正在加载探测节点…") + "</p>"}</fieldset>`;
-          }
+          if (key === "IspCityNodes") return nodeControl(spec.label);
+
           return `<fieldset class="gtm-fieldset"><legend>${e(spec.label)}${spec.required ? " *" : ""}</legend>${["Addresses", "AddressPools"].includes(key) ? '<p class="help">这里只修改当前关联列表，不会全局删除资源。上移/下移会重排优先序号；顺序/主备策略才按该序号调度，权重和线路保持不变。</p>' : ""}${items.length ? items.map((item, i) => `<div class="gtm-repeat"><div class="gtm-repeat-head"><strong>第 ${i + 1} 项</strong><span class="toolbar">${["Addresses", "AddressPools"].includes(key) && ["sequence", "source_nearest"].includes(strategy) ? button("上移", "gtm.row.move", { path: encoded, index: i, to: i - 1 }, "text") + button("下移", "gtm.row.move", { path: encoded, index: i, to: i + 1 }, "text") : ""}${button(["Addresses", "AddressPools"].includes(key) ? "解除引用" : "移除", "gtm.row.remove", { path: encoded, index: i }, "text danger")}</span></div>${spec.items.type === "object" ? controls(spec.items.properties, item, [...p, String(i)]) : scalar(key, spec.items, item, [...p, String(i)])}</div>`).join("") : '<p class="help">暂无关联项。清空关联列表会解除全部引用。</p>'}${button("添加一项", "gtm.row.add", { path: encoded }, "text", "plus")}</fieldset>`;
         }
         return scalar(key, spec, v, p);
@@ -1091,13 +1201,6 @@ export function createGtm({ api, ctx, render, queryResources }) {
         parent[key] = Number(value);
       } else parent[key] = value;
     }
-    if (editor.spec.fields.IspCityNodes)
-      values.IspCityNodes = [
-        ...form.querySelectorAll("[data-gtm-node]:checked"),
-      ].map((node) => ({
-        CityCode: node.dataset.city,
-        IspCode: node.dataset.isp,
-      }));
     return values;
   }
   function payload() {
@@ -1380,9 +1483,31 @@ export function createGtm({ api, ctx, render, queryResources }) {
         btn.disabled = false;
       }
     });
+    drawNodes();
+    form
+      .querySelector(".gtm-node-search")
+      ?.addEventListener("input", (event) => drawNodes(event.target.value));
+    form
+      .querySelector(".gtm-node-results")
+      ?.addEventListener("change", (event) => {
+        if (!event.target.matches("[data-gtm-probe]")) return;
+        editor.values = collect(form);
+        const node = currentProbeNodes().find(
+          (value) => gtmProbeKey(value) === event.target.dataset.gtmProbe,
+        );
+        if (!node) return;
+        const list = (editor.values.IspCityNodes ??= []),
+          index = list.findIndex(
+            (value) => gtmProbeKey(value) === gtmProbeKey(node),
+          );
+        if (event.target.checked && index < 0)
+          list.push({ CityCode: node.CityCode, IspCode: node.IspCode });
+        else if (!event.target.checked && index >= 0) list.splice(index, 1);
+        refreshNodeTags();
+      });
     drawLines();
     form
-      .querySelector(".gtm-line-search")
+      .querySelector(".gtm-lines .gtm-line-search")
       ?.addEventListener("input", (event) => drawLines(event.target.value));
     form
       .querySelector(".gtm-line-results")
@@ -1433,7 +1558,11 @@ export function createGtm({ api, ctx, render, queryResources }) {
               editor.values.Protocol === "ping"
                 ? { packetNum: 20, packetLossRate: 30 }
                 : { path: "/", code: 500, sni: true, followRedirect: false };
-          if (key === "IpVersion") editor.values.IspCityNodes = [];
+          if (key === "IpVersion") {
+            editor.values.IspCityNodes = [];
+            editor.nodeGroup = null;
+            editor.nodeCity = null;
+          }
           drawEditor();
         });
     if (inspectorScroll) {
@@ -1833,6 +1962,24 @@ export function createGtm({ api, ctx, render, queryResources }) {
     );
   }
   const actions = {
+    "gtm.nodes.open": () => {
+      editor.values = collect(document.querySelector("#gtm-editor-form"));
+      editor.nodesOpen = !editor.nodesOpen;
+      drawEditor();
+    },
+    "gtm.nodes.branch": (d) => {
+      editor.nodeGroup = d.group || null;
+      editor.nodeCity = d.city || null;
+      const input = document.querySelector(".gtm-node-search");
+      if (input) input.value = "";
+      drawNodes("");
+    },
+    "gtm.nodes.remove": (d) => {
+      editor.values = collect(document.querySelector("#gtm-editor-form"));
+      editor.values.IspCityNodes.splice(Number(d.index), 1);
+      refreshNodeTags();
+      drawNodes();
+    },
     "gtm.options.retry": (d) => requestEditorOptions(d.section, true),
     "gtm.lines.open": async (d) => {
       editor.values = collect(document.querySelector("#gtm-editor-form"));
@@ -1850,7 +1997,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
     },
     "gtm.lines.branch": (d) => {
       editor.lineBranch = d.code;
-      const input = document.querySelector(".gtm-line-search");
+      const input = document.querySelector(".gtm-lines .gtm-line-search");
       if (input) input.value = "";
       drawLines();
     },

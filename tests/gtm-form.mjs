@@ -123,3 +123,12 @@ console.log('PASS: update payloads include only changed fields, required identit
 
 assert.deepEqual(gtmUpdateParameters({AddressId:{type:'string',required:true},AvailableMode:{type:'string'},ManualAvailableStatus:{type:'string'}},{AddressId:'a',AvailableMode:'auto',ManualAvailableStatus:'available'},{AddressId:'a',AvailableMode:'manual',ManualAvailableStatus:'available'}),{AddressId:'a',AvailableMode:'manual',ManualAvailableStatus:'available'});
 assert.deepEqual(gtmUpdateParameters({ConfigId:{type:'string',required:true},AddressPoolLbStrategy:{type:'string'},SequenceLbStrategyMode:{type:'string'}},{ConfigId:'c',AddressPoolLbStrategy:'weight',SequenceLbStrategyMode:'preemptive'},{ConfigId:'c',AddressPoolLbStrategy:'sequence',SequenceLbStrategyMode:'preemptive'}),{ConfigId:'c',AddressPoolLbStrategy:'sequence',SequenceLbStrategyMode:'preemptive'});
+
+const {gtmProbeNodes,gtmProbeKey}=await import('../assets/gtm.js');
+const probeCatalog={Ipv4IspCityNodes:{Ipv4IspCityNode:[{GroupName:'BGP',CityCode:'1',CityName:'上海',IspCode:'a',IspName:'阿里云'},{GroupName:'BGP',CityCode:'1',CityName:'上海',IspCode:'b',IspName:'电信'},{GroupName:'BGP',CityCode:'1',IspCode:'a'}]},Ipv6IspCityNodes:{Ipv6IspCityNode:[{CityCode:2,IspCode:3,CityName:'北京',IspName:'联通'}]}};
+assert.equal(gtmProbeNodes(probeCatalog).length,2);
+assert.equal(gtmProbeNodes(probeCatalog,'IPv6').length,1);
+assert.equal(gtmProbeKey({CityCode:'2',IspCode:'3'}),gtmProbeKey(gtmProbeNodes(probeCatalog,'IPv6')[0]));
+assert.equal(probeCatalog.Ipv4IspCityNodes.Ipv4IspCityNode.length,3,'Catalog input must stay immutable');
+assert.deepEqual(gtmProbeNodes(undefined),[]);
+console.log('PASS: probe node identity, IP-family isolation, duplicate elimination and immutable catalogs');
