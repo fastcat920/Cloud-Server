@@ -68,18 +68,16 @@ export function gtmName(row = {}) {
   );
 }
 export function gtmStateBadge(row) {
-  if (row.EnableStatus === "disable" || row.AvailableStatus === "unavailable")
-    return badge("不可用", "bad");
-  if (["exceptional", "ok_alert"].includes(row.HealthStatus))
-    return badge("异常", row.HealthStatus === "exceptional" ? "bad" : "warn");
-  if (row.AvailableStatus === "available" || row.HealthStatus === "ok")
-    return badge("可用", "good");
+  const status = gtmStatus(row);
   return badge(
-    row.HealthStatus === "ok_no_monitor"
-      ? "未探测"
-      : row.Protocol?.toUpperCase() || "未知",
+    { good: "正常", warn: "警告", bad: "异常" }[status] ||
+      (row.HealthStatus === "ok_no_monitor"
+        ? "未探测"
+        : row.Protocol?.toUpperCase() || "未知"),
+    status === "unknown" ? "" : status,
   );
 }
+
 const stateBadge = gtmStateBadge;
 const primaryEdit = {
   pools: "UpdateCloudGtmAddressPoolBasicConfig",
@@ -370,17 +368,12 @@ export function gtmUpdateParameters(fields, before, parameters) {
   return patch;
 }
 export function gtmStatus(row) {
-  if (
-    row.HealthStatus === "exceptional" ||
-    row.AvailableStatus === "unavailable" ||
-    row.EnableStatus === "disable"
-  )
-    return "bad";
-  if (row.HealthStatus === "ok_alert") return "warn";
-  if (row.HealthStatus === "ok" || row.AvailableStatus === "available")
-    return "good";
-  return "unknown";
+  return (
+    { ok: "good", ok_alert: "warn", exceptional: "bad" }[row.HealthStatus] ||
+    "unknown"
+  );
 }
+
 export function moveGtmRow(items, from, to) {
   const result = structuredClone(items);
   if (from < 0 || to < 0 || from >= result.length || to >= result.length)

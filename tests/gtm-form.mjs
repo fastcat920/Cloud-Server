@@ -99,11 +99,11 @@ assert.deepEqual(gtmChanges({HealthTasks:[{TemplateId:'t',Port:443}]}, {HealthTa
 
 const { gtmStateBadge } = await import('../assets/gtm.js');
 for (const [row, label] of [
-  [{EnableStatus:'enable',HealthStatus:'ok',AvailableStatus:'available'},'可用'],
-  [{EnableStatus:'enable',HealthStatus:'ok_alert',AvailableStatus:'available'},'异常'],
+  [{EnableStatus:'enable',HealthStatus:'ok',AvailableStatus:'available'},'正常'],
+  [{EnableStatus:'enable',HealthStatus:'ok_alert',AvailableStatus:'available'},'警告'],
   [{EnableStatus:'enable',HealthStatus:'exceptional',AvailableStatus:'available'},'异常'],
-  [{EnableStatus:'enable',HealthStatus:'exceptional',AvailableStatus:'unavailable'},'不可用'],
-  [{EnableStatus:'disable',HealthStatus:'ok',AvailableStatus:'available'},'不可用'],
+  [{EnableStatus:'enable',HealthStatus:'exceptional',AvailableStatus:'unavailable'},'异常'],
+  [{EnableStatus:'disable',HealthStatus:'ok',AvailableStatus:'available'},'正常'],
   [{HealthStatus:'ok_no_monitor'},'未探测'],
   [{},'未知'],
 ]) {
@@ -111,7 +111,10 @@ for (const [row, label] of [
   assert.equal((html.match(/<span/g) || []).length, 1, 'Exactly one state badge');
   assert.equal(html.replace(/<[^>]*>/g,''), label);
 }
-console.log('PASS: one combined badge for healthy, degraded, unavailable, disabled and unknown resources');
+assert.equal(gtmStatus({HealthStatus:'ok',AvailableStatus:'unavailable',EnableStatus:'disable'}),'good');
+assert.equal(gtmStatus({AvailableStatus:'available'}),'unknown');
+assert.equal(gtmStatus({HealthStatus:'ok_alert',AvailableStatus:'unavailable'}),'warn');
+console.log('PASS: health-only colors and labels ignore manual availability and enable status');
 
 const { gtmUpdateParameters } = await import('../assets/gtm.js');
 const editFields = { AddressId:{type:'string',required:true}, Name:{type:'string'}, HealthTasks:{type:'array',items:{type:'object',properties:{TemplateId:{type:'string'},Port:{type:'integer'}}}} };
