@@ -44,7 +44,7 @@ export const select = (name, label, options, value = "", extra = "") =>
   `<div class="field"><label for="${escape(name)}">${escape(label)}</label><select id="${escape(name)}" name="${escape(name)}" ${extra}>${options
     .map((o) => {
       const v = o.value ?? o.id;
-      return `<option value="${escape(v)}" ${String(value) === String(v) ? "selected" : ""}>${escape(o.label ?? o.name ?? v)}</option>`;
+      return `<option value="${escape(v)}" ${o.disabled ? "disabled" : ""} ${String(value) === String(v) ? "selected" : ""}>${escape(o.label ?? o.name ?? v)}</option>`;
     })
     .join("")}</select></div>`;
 export const check = (name, label, checked = false) =>

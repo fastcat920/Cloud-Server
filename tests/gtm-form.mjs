@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { normalizeGtm, rows, gtmName, moveGtmRow } from "../assets/gtm.js";
+import { normalizeGtm, rows, gtmName, moveGtmRow, initial } from "../assets/gtm.js";
 const cloud = {
   ConfigId: "config-1",
   AddressPools: {
@@ -143,3 +143,27 @@ assert(errorDetails({original_message:'<img src=x onerror=alert(1)>'}).includes(
 assert(!errorDetails({original_message:'<img src=x>'}).includes('<img'));
 assert(!errorDetails({code:'InvalidParameter'}).includes('<details open'));
 console.log('PASS: health-check dependent fields, Chinese preview paths and escaped collapsed diagnostics');
+
+const explicitFields = {
+  AvailableMode: { type: "string", required: true },
+  HealthJudgement: { type: "string" },
+  ManualAvailableStatus: { type: "string" },
+};
+assert.deepEqual(initial(explicitFields, {}, true), { AvailableMode: "" });
+assert.deepEqual(initial(explicitFields, {}, false), { AvailableMode: "" });
+assert.deepEqual(
+  initial(
+    explicitFields,
+    {
+      AvailableMode: "manual",
+      HealthJudgement: "all_ok",
+      ManualAvailableStatus: "unavailable",
+    },
+    false,
+  ),
+  {
+    AvailableMode: "manual",
+    HealthJudgement: "all_ok",
+    ManualAvailableStatus: "unavailable",
+  },
+);

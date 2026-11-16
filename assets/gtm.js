@@ -398,12 +398,10 @@ export function moveGtmRow(items, from, to) {
       result[i].SerialNumber = i + 1;
   return result;
 }
-function initial(fields, resource, create) {
+export function initial(fields, resource, create) {
   const defaults = {
     Remark: "",
     EnableStatus: create ? "disable" : "enable",
-    AvailableMode: "auto",
-    HealthJudgement: "any_ok",
     ScheduleZoneMode: "custom",
     ChargeType: "prepay",
     Ttl: 60,
@@ -417,7 +415,6 @@ function initial(fields, resource, create) {
     AddressPoolType: "IPv4",
     IpVersion: "IPv4",
     Protocol: "ping",
-    ManualAvailableStatus: "available",
     AddressPoolLbStrategy: "round_robin",
     AddressLbStrategy: "round_robin",
   };
@@ -1111,10 +1108,25 @@ export function createGtm({ api, ctx, render, queryResources }) {
   }
   function scalar(key, spec, value, path) {
     if (key === "RequestSource") spec = { ...spec, required: true };
+    const explicit = [
+      "AvailableMode",
+      "HealthJudgement",
+      "ManualAvailableStatus",
+    ].includes(key);
+    if (key === "AvailableMode" || key === "ManualAvailableStatus")
+      spec = { ...spec, required: true };
+    if (
+      key === "HealthJudgement" &&
+      Object.hasOwn(editor.spec.fields, "HealthTasks")
+    )
+      spec = { ...spec, required: !!editor.values.HealthTasks?.length };
     const encoded = JSON.stringify(path),
       name = "gtm_" + encodeURIComponent(encoded),
       required = spec.required ? "required" : "";
-    const opts = choices(key, spec, value);
+    let opts = choices(key, spec, value);
+    if (explicit && opts)
+      opts = opts.filter((row) => spec.enum.includes(row.value));
+    const valid = !explicit || spec.enum.includes(value);
     const identity =
       path.length === 1 &&
       [
@@ -1132,8 +1144,28 @@ export function createGtm({ api, ctx, render, queryResources }) {
       input = select(
         name,
         spec.label,
-        [...(spec.required ? [] : [{ value: "", label: "未设置" }]), ...opts],
-        value ?? "",
+        [
+          ...(explicit
+            ? [
+                {
+                  value: "",
+                  label:
+                    key === "HealthJudgement" &&
+                    Object.hasOwn(editor.spec.fields, "HealthTasks") &&
+                    !editor.values.HealthTasks?.length
+                      ? "未关联探测任务，可暂不填写"
+                      : editor.spec.create
+                        ? "请选择"
+                        : "云端未返回有效值，请选择",
+                  disabled: true,
+                },
+              ]
+            : spec.required
+              ? []
+              : [{ value: "", label: "未设置" }]),
+          ...opts,
+        ],
+        valid ? (value ?? "") : "",
         required,
       );
     else if (spec.type === "boolean") input = check(name, spec.label, !!value);
@@ -1149,7 +1181,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
             : "text",
         `${required} ${spec.type === "integer" ? `step="1" ${spec.minimum !== undefined ? `min="${spec.minimum}"` : ""} ${spec.maximum !== undefined ? `max="${spec.maximum}"` : ""}` : ""}`,
       );
-    return `<div data-gtm-path="${e(encoded)}" data-type="${spec.type}" data-required="${spec.required ? "1" : "0"}" data-input="${e(name)}" ${sourceKind(key) && !identity ? `data-gtm-source="${sourceKind(key)}"` : ""}>${input}</div>`;
+    return `<div data-gtm-path="${e(encoded)}" data-type="${spec.type}" data-preserve-empty="${explicit ? "1" : "0"}" data-required="${spec.required ? "1" : "0"}" data-input="${e(name)}" ${sourceKind(key) && !identity ? `data-gtm-source="${sourceKind(key)}"` : ""}>${input}</div>`;
   }
   function editorBody() {
     const errors = Object.entries(editor.options.errors || {}).map(
@@ -1253,6 +1285,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
       for (const part of path) parent = parent[part] ??= {};
       const value =
         node.dataset.type === "boolean" ? input.checked : input.value;
+      if (value === "" && node.dataset.preserveEmpty === "1") continue;
       if (value === "" && node.dataset.required !== "1") {
         if (Array.isArray(parent)) parent[Number(key)] = "";
         else if (

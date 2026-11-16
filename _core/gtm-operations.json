@@ -581,7 +581,7 @@
       "HealthJudgement": {
         "type": "string",
         "label": "健康判定条件",
-        "required": true,
+        "required": false,
         "enum": [
           "any_ok",
           "p30_ok",

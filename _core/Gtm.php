@@ -232,7 +232,7 @@ final class Gtm
             if ($spec['delete'] && $references) throw new ApiError('资源仍被引用，请先在上级配置中解除关联',409);
         }
         if ($kind==='addresses' && !empty($params['HealthTasks']) && !isset($params['HealthJudgement'])) {
-            $params['HealthJudgement']=$before['HealthJudgement'] ?? 'any_ok';
+            $params['HealthJudgement']=$before['HealthJudgement'] ?? null;
             if (!in_array($params['HealthJudgement'],$spec['fields']['HealthJudgement']['enum'],true)) throw new ApiError('请明确选择健康判定条件');
         }
         if ($kind==='monitors' && isset($params['IspCityNodes']) && !$params['IspCityNodes']) throw new ApiError('请至少选择一个探测节点');

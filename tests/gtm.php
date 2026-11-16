@@ -29,6 +29,9 @@ try {
  try{$gtm->preview($account,'UpdateCloudGtmInstanceConfigBasic',['ConfigId'=>'config-1','Ttl'=>120],$detail['token']);throw new LogicException('Stale edit accepted');}catch(ApiError $e){verifyGtm($e->status===409,'Conflict status');}
  $pool=$gtm->detail($account,'pools','pool-1');
  try{$gtm->preview($account,'DeleteCloudGtmAddressPool',['AddressPoolId'=>'pool-1'],$pool['token']);throw new LogicException('Referenced deletion accepted');}catch(ApiError $e){verifyGtm($e->status===409,'Delete guard');}
+ $noTasks=$gtm->preview($account,'CreateCloudGtmAddress',['Name'=>'No health tasks','Type'=>'IPv4','Address'=>'192.0.2.1','EnableStatus'=>'disable','AvailableMode'=>'auto'],null);
+ verifyGtm(!isset($noTasks['parameters']['HealthJudgement']),'Creation without health tasks must not infer a judgement');
+ try{$gtm->preview($account,'CreateCloudGtmAddress',['Name'=>'Missing judgement','Type'=>'IPv4','Address'=>'192.0.2.1','EnableStatus'=>'disable','AvailableMode'=>'auto','HealthTasks'=>[['TemplateId'=>'mtp-1','Port'=>443]]],null);throw new LogicException('Creation with tasks needs explicit health judgement');}catch(ApiError $e){verifyGtm(str_contains($e->getMessage(),'健康判定条件'),'Conditional creation validation');}
  $p=$gtm->preview($account,'ReplaceCloudGtmAddressPoolAddress',['AddressPoolId'=>'pool-1','Addresses'=>[['AddressId'=>'addr-1','WeightValue'=>20,'SerialNumber'=>1,'RequestSource'=>['default']]]],$pool['token']);
  $r=$gtm->apply($account,$p['ticket']);verifyGtm($r['verification']==='confirmed','Nested association verification');
  $raw=json_decode(substr(file_get_contents($directory.'/gtm-fixture.php'),strlen(Store::GUARD)),true);$calls=array_values(array_filter($raw['calls'],fn($q)=>$q['Action']==='ReplaceCloudGtmAddressPoolAddress'));
@@ -75,6 +78,13 @@ try {
  $raw=json_decode(substr(file_get_contents($directory.'/gtm-fixture.php'),strlen(Store::GUARD)),true);$raw['addresses']['addr-1']['Name']='externally changed after preview';file_put_contents($directory.'/gtm-fixture.php',Store::GUARD.json_encode($raw));
  try{$gtm->apply($account,$fast['ticket']);throw new LogicException('Coalesced preview bypassed apply conflict check');}catch(ApiError $e){verifyGtm($e->status===409,'Fresh conflict check still required at apply');}
  $metrics=$gtm->metrics();verifyGtm($metrics['cloud_calls']>0 && $metrics['cloud_ms']>=0,'Safe timing metadata');
+ $d=$gtm->detail($account,'addresses','addr-1');
+ $missing=json_decode(substr(file_get_contents($directory.'/gtm-fixture.php'),strlen(Store::GUARD)),true);
+ $savedCondition=$missing['addresses']['addr-1']['HealthJudgement'];
+ unset($missing['addresses']['addr-1']['HealthJudgement']);file_put_contents($directory.'/gtm-fixture.php',Store::GUARD.json_encode($missing));
+ $withoutCondition=$gtm->detail($account,'addresses','addr-1');
+ try{$gtm->preview($account,'UpdateCloudGtmAddress',['AddressId'=>'addr-1','HealthTasks'=>[['TemplateId'=>'mtp-1','Port'=>30001]]],$withoutCondition['token']);throw new LogicException('Missing cloud health judgement silently defaulted');}catch(ApiError $e){verifyGtm(str_contains($e->getMessage(),'健康判定条件'),'Missing condition must require explicit selection');}
+ $missing['addresses']['addr-1']['HealthJudgement']=$savedCondition;file_put_contents($directory.'/gtm-fixture.php',Store::GUARD.json_encode($missing));
  $d=$gtm->detail($account,'addresses','addr-1');
  $paired=$gtm->preview($account,'UpdateCloudGtmAddress',['AddressId'=>'addr-1','Address'=>'130.12.18.223','HealthTasks'=>[['TemplateId'=>'mtp-1','Port'=>30001]]],$d['token']);
  verifyGtm($paired['parameters']['HealthJudgement']===$d['resource']['HealthJudgement'],'Health task changes must freeze the preserved health judgement into preview');
