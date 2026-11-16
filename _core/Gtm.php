@@ -240,6 +240,14 @@ final class Gtm
             $before=$detail['resource'];$references=$this->references($account,$kind,$id);
             if ($spec['delete'] && $references) throw new ApiError('资源仍被引用，请先在上级配置中解除关联',409);
         }
+        // Match the console's complete identity fields even when only health tasks changed.
+        // Freeze them in the preview, never fill them from a later cloud read at apply time.
+        if ($operation==='UpdateCloudGtmAddress') {
+            foreach (['Name','Address'] as $field) {
+                if (!array_key_exists($field,$params)) $params[$field]=$before[$field] ?? null;
+                if (!is_string($params[$field]) || $params[$field]==='') throw new ApiError('云端地址名称或服务地址缺失，请刷新后重新编辑');
+            }
+        }
         if ($kind==='addresses' && !empty($params['HealthTasks']) && !isset($params['HealthJudgement'])) {
             $params['HealthJudgement']=$before['HealthJudgement'] ?? null;
             if (!in_array($params['HealthJudgement'],$spec['fields']['HealthJudgement']['enum'],true)) throw new ApiError('请明确选择健康判定条件');
@@ -356,6 +364,7 @@ final class Gtm
             if (isset($ticket['batch'])) return $this->applyBatch($account,$ticket['batch'],$lock);
             foreach ($this->store->read()['gtm_changes'] ?? [] as $change) if ($change['nonce']===$ticket['nonce'] && $change['status']==='success') return $change['result'];
             $operation=$ticket['operation'];$spec=self::catalog()[$operation];$params=$ticket['parameters'];$kind=$spec['kind'];$idField=self::KINDS[$kind][4];$id=$params[$idField] ?? '';
+            if ($operation==='UpdateCloudGtmAddress' && (empty($params['Name']) || empty($params['Address']))) throw new ApiError('此预览缺少完整地址信息，请返回编辑重新预览',409);
             if ($kind==='addresses' && !empty($params['HealthTasks']) && !isset($params['HealthJudgement'])) throw new ApiError('此预览缺少健康判定条件，请返回编辑重新预览',409);
             if (!$spec['create']) {
                 $current=$this->detail($account,$kind,$id,$params['InstanceId'] ?? $ticket['before']['InstanceId'] ?? '');
