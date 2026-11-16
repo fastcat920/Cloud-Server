@@ -70,10 +70,11 @@ export function gtmName(row = {}) {
 export function gtmStateBadge(row) {
   const status = gtmStatus(row);
   return badge(
-    { good: "正常", warn: "警告", bad: "异常" }[status] ||
-      (row.HealthStatus === "ok_no_monitor"
-        ? "未探测"
-        : row.Protocol?.toUpperCase() || "未知"),
+    status === "good" && row.HealthStatus === "ok_no_monitor"
+      ? "正常（无探测）"
+      : { good: "正常", warn: "警告", bad: "异常" }[status] ||
+          row.Protocol?.toUpperCase() ||
+          "未知",
     status === "unknown" ? "" : status,
   );
 }
@@ -374,8 +375,9 @@ export function gtmStatus(row) {
     if (manual === "unavailable") return "bad";
   }
   return (
-    { ok: "good", ok_alert: "warn", exceptional: "bad" }[row.HealthStatus] ||
-    "unknown"
+    { ok: "good", ok_no_monitor: "good", ok_alert: "warn", exceptional: "bad" }[
+      row.HealthStatus
+    ] || "unknown"
   );
 }
 
@@ -1967,7 +1969,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
       const selected =
         editor?.spec.kind === type &&
         editor.resource[ids[type]] === row[ids[type]];
-      return `<article role="button" tabindex="0" aria-label="${row.EnableStatus === "disable" ? "未启用，" : ""}编辑 ${e(gtmName(row))}" data-action="gtm.edit" data-kind="${type}" data-id="${e(row[ids[type]])}" data-operation="${opFor(type, "basic")}" class="gtm-node gtm-node-${type} gtm-state-${gtmStatus(row)} ${row.EnableStatus === "disable" ? "gtm-node-paused" : ""} ${selected ? "selected" : ""}"><div class="gtm-node-title"><span class="gtm-node-heading">${stateBadge(row)}<span class="gtm-node-name">${e(gtmName(row))}</span></span><span class="gtm-kind">${e(kinds[type])}</span></div>${row.EnableStatus === "disable" ? '<span class="gtm-pause-icon" role="img" aria-label="未启用" title="未启用"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9 7v10M15 7v10"/></svg></span>' : ""}${row.Ttl ? `<div class="gtm-node-meta">TTL ${e(row.Ttl)}s</div>` : ""}${row.Address ? `<div class="gtm-node-address mono">${e(row.Address)}</div>` : ""}${type === "addresses" && row.HealthTasks?.length ? `<div class="gtm-monitor-chips">${row.HealthTasks.map((task) => `<span data-gtm-template="${e(task.TemplateId)}" data-port="${e(task.Port ?? "")}">${e(task.TemplateName || displayName(knownResources().get(task.TemplateId)))}${task.Port !== undefined ? ":" + e(task.Port) : ""}</span>`).join("")}</div>` : ""}</article>`;
+      return `<article role="button" tabindex="0" aria-label="${row.EnableStatus === "disable" ? "未启用，" : ""}编辑 ${e(gtmName(row))}" data-action="gtm.edit" data-kind="${type}" data-id="${e(row[ids[type]])}" data-operation="${opFor(type, "basic")}" class="gtm-node gtm-node-${type} gtm-state-${gtmStatus(row)} ${row.EnableStatus === "disable" ? "gtm-node-paused" : ""} ${selected ? "selected" : ""}"><div class="gtm-node-title">${stateBadge(row)}<span class="gtm-kind">${e(kinds[type])}</span></div><div class="gtm-node-name">${e(gtmName(row))}</div>${row.EnableStatus === "disable" ? '<span class="gtm-pause-icon" role="img" aria-label="未启用" title="未启用"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9 7v10M15 7v10"/></svg></span>' : ""}${row.Ttl ? `<div class="gtm-node-meta">TTL ${e(row.Ttl)}s</div>` : ""}${row.Address ? `<div class="gtm-node-address mono">${e(row.Address)}</div>` : ""}${type === "addresses" && row.HealthTasks?.length ? `<div class="gtm-monitor-chips">${row.HealthTasks.map((task) => `<span data-gtm-template="${e(task.TemplateId)}" data-port="${e(task.Port ?? "")}">${e(task.TemplateName || displayName(knownResources().get(task.TemplateId)))}${task.Port !== undefined ? ":" + e(task.Port) : ""}</span>`).join("")}</div>` : ""}</article>`;
     };
     const incoming = (row, strategy) => {
       const text =

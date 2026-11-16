@@ -2049,16 +2049,15 @@ body:has(.gtm-drawer[open]) {
   --gtm-edge-style: dashed;
   --gtm-connector: #aeb5bf;
 }
-.gtm-node-heading {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  min-width: 0;
-}
-.gtm-node-heading .tag {
+.gtm-node-title .tag {
   flex: none;
-  margin-top: 1px;
   white-space: nowrap;
+}
+.gtm-workbench .gtm-node-name {
+  display: block;
+  text-align: center;
+  margin-top: 7px;
+  width: 100%;
 }
 .gtm-node-paused::after {
   content: "";

@@ -104,7 +104,7 @@ for (const [row, label] of [
   [{EnableStatus:'enable',HealthStatus:'exceptional',AvailableStatus:'available'},'异常'],
   [{EnableStatus:'enable',HealthStatus:'exceptional',AvailableStatus:'unavailable'},'异常'],
   [{EnableStatus:'disable',HealthStatus:'ok',AvailableStatus:'available'},'正常'],
-  [{HealthStatus:'ok_no_monitor'},'未探测'],
+  [{HealthStatus:'ok_no_monitor'},'正常（无探测）'],
   [{},'未知'],
 ]) {
   const html = gtmStateBadge(row);
@@ -182,3 +182,7 @@ assert.equal(gtmEdgeInactive({HealthStatus:'exceptional'}),true);
 assert.equal(gtmEdgeInactive({HealthStatus:'ok_alert'}),false);
 assert.equal(gtmEdgeInactive({AvailableMode:'manual',ManualAvailableStatus:'unavailable',HealthStatus:'ok'}),true);
 assert.equal(initial(explicitFields,{AvailableMode:'unknown'},false).AvailableMode,'auto');
+
+assert.equal(gtmStatus({HealthStatus:'ok_no_monitor'}),'good');
+assert.equal(gtmStatus({HealthStatus:'ok_no_monitor',AvailableMode:'manual',ManualAvailableStatus:'unavailable'}),'bad');
+assert.equal(gtmStateBadge({HealthStatus:'ok_no_monitor',AvailableMode:'manual',ManualAvailableStatus:'unavailable'}).replace(/<[^>]*>/g,''),'异常');
