@@ -524,10 +524,9 @@ function dnsView() {
             ]),
           )
         : table(
-            ["域名", "域名 ID", "操作"],
+            ["域名", "操作"],
             c.items.map((r) => [
               e(r.DomainName),
-              e(r.DomainId),
               button("管理解析", "domain.open", { name: r.DomainName }, "text"),
             ]),
           ),
@@ -1030,6 +1029,9 @@ function editDns(index, cf) {
       toast("解析记录已保存");
       await queryResources();
     },
+    "保存",
+    false,
+    { drawer: true },
   );
   if (cf) {
     const form = document.querySelector("#modal-form"),

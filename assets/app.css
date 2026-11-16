@@ -1943,7 +1943,8 @@ dialog::backdrop {
 }
 
 /* List editing and mobile canvas editing share a top-layer drawer. */
-dialog.gtm-drawer {
+dialog.gtm-drawer,
+dialog.record-drawer {
   inset: 0;
   margin: 0 0 0 auto;
   width: min(560px, 100vw);
@@ -1958,7 +1959,8 @@ dialog.gtm-drawer {
   padding: 0;
   background: var(--surface);
 }
-.gtm-drawer[open] {
+.gtm-drawer[open],
+.record-drawer[open] {
   animation: gtm-drawer-in 180ms ease-out;
 }
 .gtm-drawer .gtm-inspector {
@@ -1988,7 +1990,8 @@ dialog.gtm-drawer {
   overflow-anchor: none;
   padding: 20px;
 }
-body:has(.gtm-drawer[open]) {
+body:has(.gtm-drawer[open]),
+body:has(.record-drawer[open]) {
   overflow: hidden;
 }
 @keyframes gtm-drawer-in {
@@ -2000,7 +2003,8 @@ body:has(.gtm-drawer[open]) {
   }
 }
 @media (max-width: 800px) {
-  dialog.gtm-drawer {
+  dialog.gtm-drawer,
+  dialog.record-drawer {
     width: 100vw;
     border-left: 0;
   }
@@ -2012,7 +2016,8 @@ body:has(.gtm-drawer[open]) {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .gtm-drawer[open] {
+  .gtm-drawer[open],
+  .record-drawer[open] {
     animation: none;
   }
 }
@@ -2147,5 +2152,41 @@ body:has(.gtm-drawer[open]) {
 @media (max-width: 800px) {
   .gtm-canvas-tools .gtm-canvas-hint {
     font-size: 11px;
+  }
+}
+
+#dialog.record-drawer {
+  max-width: 100vw;
+  max-height: 100vh;
+  max-height: 100dvh;
+}
+.record-drawer #modal-form {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.record-drawer .dialog-head,
+.record-drawer .dialog-foot {
+  flex-shrink: 0;
+  padding: 16px 20px;
+}
+.record-drawer .dialog-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  overflow-anchor: none;
+  padding: 20px;
+}
+@media (max-width: 800px) {
+  .record-drawer .dialog-head {
+    padding-top: max(16px, env(safe-area-inset-top));
+  }
+  .record-drawer .dialog-body {
+    padding: 16px;
+  }
+  .record-drawer .dialog-foot {
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
   }
 }

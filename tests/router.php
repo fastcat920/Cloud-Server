@@ -31,6 +31,7 @@ CloudDesk\Http::$transport = function ($method, $url, $headers, $body) {
         require_once __DIR__.'/gtm-fixture.php';
         return gtmFixture($query);
     }
+    if (str_contains($host,'alidns') && ($query['Action'] ?? '')==='DescribeDomains') return ['status'=>200,'body'=>json_encode(['TotalCount'=>1,'Domains'=>['Domain'=>[['DomainId'=>'private-domain-id','DomainName'=>'example.com']]]])];
     if (str_contains($host,'alidns') && ($query['Action'] ?? '')==='DescribeDomainInfo') return ['status'=>200,'body'=>json_encode(['MinTtl'=>60,'AvailableTtls'=>['AvailableTtl'=>['[60,600,1800,3600]']]])];
     if (str_contains($host, 'alidns')) {
         return ['status' => 200,'body' => json_encode(['RequestId' => 'test','TotalCount' => 1,'DomainRecords' => ['Record' => [['RecordId' => 'test-record','RR' => 'www','Type' => 'A','Value' => '192.0.2.10','TTL' => 600]]]])];

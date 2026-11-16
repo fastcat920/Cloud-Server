@@ -116,8 +116,10 @@ export function modal(
   onSubmit,
   submit = "保存",
   danger = false,
+  options = {},
 ) {
   const dialog = document.querySelector("#dialog");
+  dialog.classList.toggle("record-drawer", !!options.drawer);
   dialog.innerHTML = `<form id="modal-form"><div class="dialog-head"><div><h2 id="dialog-title">${escape(title)}</h2><p>${escape(description)}</p></div>${button("×", "modal.close", {}, "icon-only")}</div><div class="dialog-body"><div class="dialog-error" role="alert"></div>${body}</div><div class="dialog-foot">${button("取消", "modal.close")}<button type="submit" class="button ${danger ? "danger" : "primary"}">${escape(submit)}</button></div></form>`;
   dialog.querySelector("form").addEventListener("submit", async (e) => {
     e.preventDefault();
