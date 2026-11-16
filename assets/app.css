@@ -1942,7 +1942,7 @@ dialog::backdrop {
   scroll-margin-top: 16px;
 }
 
-/* List editing uses the top layer; canvas editing keeps its inline inspector. */
+/* List editing and mobile canvas editing share a top-layer drawer. */
 dialog.gtm-drawer {
   inset: 0;
   margin: 0 0 0 auto;
@@ -1999,7 +1999,7 @@ body:has(.gtm-drawer[open]) {
     transform: translateX(0);
   }
 }
-@media (max-width: 600px) {
+@media (max-width: 800px) {
   dialog.gtm-drawer {
     width: 100vw;
     border-left: 0;
@@ -2087,4 +2087,68 @@ body:has(.gtm-drawer[open]) {
   fill: none;
   stroke: currentColor;
   stroke-width: 1.7;
+}
+
+.gtm-page.canvas-mode .gtm-drawer .gtm-inspector {
+  max-height: none;
+}
+@media (max-width: 800px) {
+  /* iOS focuses text controls smaller than 16px by zooming the viewport. */
+  input,
+  select,
+  textarea,
+  .gtm-inspector input,
+  .gtm-inspector select,
+  .gtm-inspector textarea,
+  textarea.code {
+    font-size: 16px;
+  }
+  #dialog {
+    max-width: calc(100vw - 28px);
+    max-height: calc(100dvh - 28px);
+  }
+  .gtm-drawer .gtm-inspector-head {
+    padding-top: max(16px, env(safe-area-inset-top));
+  }
+}
+
+.gtm-canvas {
+  touch-action: pan-x pan-y;
+}
+.gtm-canvas-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 4;
+  background: var(--bg);
+  margin-bottom: 12px;
+}
+.gtm-canvas-tools .gtm-canvas-hint {
+  margin-bottom: 0;
+}
+.gtm-zoom-controls {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+.gtm-zoom-controls .button {
+  min-height: 32px;
+  padding: 4px 9px;
+}
+.gtm-zoom-surface {
+  position: relative;
+  overflow: hidden;
+}
+.gtm-zoom-surface > .gtm-graph {
+  transform-origin: top left;
+}
+@media (max-width: 800px) {
+  .gtm-canvas-tools .gtm-canvas-hint {
+    font-size: 11px;
+  }
 }

@@ -171,6 +171,9 @@ try {
         throw new LogicException('Corrupt data accepted');
     } catch (JsonException $expected) {
     }verify(file_get_contents($path) === Store::GUARD.'{broken', 'Corrupt data overwritten');
+    verify(Cloud::dnsTtlOptions(['MinTtl'=>600,'AvailableTtls'=>['AvailableTtl'=>['[600,1800,3600]','600','60','bad']]])===[600,1800,3600], 'DNS TTL lists decode JSON entries, deduplicate and honor minimum');
+    verify(Cloud::dnsTtlOptions(['MinTtl'=>1,'AvailableTtls'=>['AvailableTtl'=>['1','60','86400','86401']]])===[1,60,86400], 'DNS TTL explicit choices retain cloud order and valid bounds');
+    verify(Cloud::dnsTtlOptions(['MinTtl'=>120])===[120,600,1800,3600,43200,86400], 'DNS TTL missing enum uses minimum and valid common durations');
     echo "PASS: atomic store, concurrency, encryption, 3-provider compute/object signing, Cloudflare errors, config compatibility, v1 import, corruption protection\n";
 } finally {
     Http::$transport = null;

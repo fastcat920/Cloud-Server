@@ -78,6 +78,20 @@ final class Cloud
     public function __construct(private Security $security)
     {
     }
+    public static function dnsTtlOptions(array $info): array
+    {
+        $minimum=max(1,min(86400,(int)($info['MinTtl'] ?? 600)));
+        $values=[];
+        $read=function(mixed $value,int $depth=0) use (&$read,&$values,$minimum): void {
+            if ($depth>4) return;
+            if (is_array($value)) { foreach ($value as $item) $read($item,$depth+1);return; }
+            if (is_string($value) && str_starts_with(trim($value),'[')) { $decoded=json_decode($value,true);if(is_array($decoded))$read($decoded,$depth+1);return; }
+            if ((is_int($value) || (is_string($value) && ctype_digit($value))) && (int)$value>=$minimum && (int)$value<=86400) $values[(int)$value]=(int)$value;
+        };
+        $read($info['AvailableTtls']['AvailableTtl'] ?? []);
+        if (!$values) $read([$minimum,600,1800,3600,43200,86400]);
+        return array_values($values);
+    }
     public function credentials(array $account): array
     {
         if (!($account['enabled'] ?? false)) {

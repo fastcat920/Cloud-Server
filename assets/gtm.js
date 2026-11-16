@@ -676,6 +676,8 @@ export function createGtm({ api, ctx, render, queryResources }) {
         node.textContent =
           label + (node.dataset.port ? ":" + node.dataset.port : "");
     }
+    if (document.querySelector(".gtm-canvas[data-zoom-bound]"))
+      zoomCanvas(canvasZoom);
   }
   function relationStrategy() {
     return (
@@ -1260,7 +1262,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
           : "";
       })
       .join("");
-    return `${editor.bindingHint ? `<div class="notice">${e(editor.bindingHint)}</div>` : ""}${!editor.spec.create && editor.spec.kind !== "list" ? '<div class="notice warn">共享资源的修改会影响其他引用，提交预览时将核对引用范围。</div>' : ""}<p id="gtm-aux-status" class="help" role="status"></p>${errors.length ? `<details class="notice warn"><summary>部分辅助资源读取失败</summary>${errors.map(e).join("<br>")}</details>` : ""}${sections}`;
+    return `${editor.bindingHint ? `<div class="notice">${e(editor.bindingHint)}</div>` : ""}${!editor.spec.create && editor.spec.kind !== "list" ? '<div class="notice warn">共享资源的修改会影响其他引用，提交时将核对引用范围。</div>' : ""}<p id="gtm-aux-status" class="help" role="status"></p>${errors.length ? `<details class="notice warn"><summary>部分辅助资源读取失败</summary>${errors.map(e).join("<br>")}</details>` : ""}${sections}`;
   }
   function collect(form) {
     const values = structuredClone(editor.values);
@@ -1477,6 +1479,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
             updateListedResource(c.gtmDetail);
             render();
           } else await open(root.kind, root.id, true);
+          restoreListPosition(savedEditor.returnTo);
         } else {
           c.gtmDetail = null;
           await queryResources();
@@ -1793,9 +1796,16 @@ export function createGtm({ api, ctx, render, queryResources }) {
     const requested = ++session;
     const c = ctx(),
       selectedAccount = c.account;
-    const returnTo = !c.gtmDetail
-      ? editor?.returnTo || { x: window.scrollX, y: window.scrollY, kind, id }
-      : null;
+    const canvas = document.querySelector(".gtm-canvas");
+    const returnTo = editor?.returnTo || {
+      x: window.scrollX,
+      y: window.scrollY,
+      kind,
+      id,
+      canvas: canvas
+        ? { left: canvas.scrollLeft, top: canvas.scrollTop }
+        : null,
+    };
     if (!c.account) throw new Error("请先选择阿里云账号");
     const knownName = displayName(knownResources().get(id));
     editor = null;
@@ -1929,6 +1939,13 @@ export function createGtm({ api, ctx, render, queryResources }) {
           : `[data-action="gtm.create"][data-kind="${CSS.escape(position.kind)}"]`;
         document.querySelector(selector)?.focus({ preventScroll: true });
       }
+      if (position.canvas) {
+        const canvas = document.querySelector(".gtm-canvas");
+        if (canvas) {
+          canvas.scrollLeft = position.canvas.left;
+          canvas.scrollTop = position.canvas.top;
+        }
+      }
       window.scrollTo(position.x, position.y);
     };
     restore();
@@ -1940,9 +1957,100 @@ export function createGtm({ api, ctx, render, queryResources }) {
       ? `<div class="gtm-loading"><header class="gtm-inspector-head"><div><small>${e(kinds[opening.kind])}</small><h3 id="gtm-editor-title">${e(opening.name)}</h3></div>${button("×", "gtm.inspector.close", {}, "icon-only")}</header><div class="gtm-inspector-body" role="status">正在读取云端配置…</div><footer class="gtm-inspector-foot">${button("关闭", "gtm.inspector.close")}</footer></div>`
       : "";
     const content = `<aside class="gtm-inspector" id="gtm-inspector" aria-label="GTM 参数编辑" ${opening ? `data-session="${opening.session}" data-loading="1"` : ""}>${loading}</aside>`;
-    return ctx().gtmDetail
+    return ctx().gtmDetail && !window.matchMedia("(max-width: 800px)").matches
       ? content
       : `<dialog class="gtm-drawer" id="gtm-drawer" aria-labelledby="gtm-editor-title">${content}</dialog>`;
+  }
+  let canvasZoom = 1,
+    zoomContext = "";
+  function zoomCanvas(next, anchor = null) {
+    const canvas = document.querySelector(".gtm-canvas"),
+      surface = canvas?.querySelector(".gtm-zoom-surface"),
+      graph = surface?.querySelector(".gtm-graph");
+    if (!graph) return;
+    const old = Number(surface.dataset.zoom || 1),
+      rect = surface.getBoundingClientRect();
+    const cr = canvas.getBoundingClientRect();
+    const point = anchor || {
+      x: cr.left + canvas.clientWidth / 2,
+      y: cr.top + canvas.clientHeight / 2,
+    };
+    const x = (point.x - rect.left) / old,
+      y = (point.y - rect.top) / old;
+    const width = Number(surface.dataset.width || graph.scrollWidth),
+      height = graph.offsetHeight;
+    canvasZoom = Math.max(0.25, Math.min(2, next));
+    Object.assign(surface.dataset, { width, height, zoom: canvasZoom });
+    graph.style.width = width + "px";
+    graph.style.minWidth = width + "px";
+    graph.style.position = "absolute";
+    graph.style.transform = `scale(${canvasZoom})`;
+    surface.style.width = width * canvasZoom + "px";
+    surface.style.height = height * canvasZoom + "px";
+    canvas.scrollLeft += x * (canvasZoom - old);
+    canvas.scrollTop += y * (canvasZoom - old);
+    const label = canvas.querySelector('[data-action="gtm.zoom.reset"]');
+    if (label) label.textContent = Math.round(canvasZoom * 100) + "%";
+  }
+  function mountCanvas() {
+    const canvas = document.querySelector(".gtm-canvas");
+    if (!canvas || canvas.dataset.zoomBound) return;
+    canvas.dataset.zoomBound = "1";
+    const detail = ctx().gtmDetail;
+    const key = `${ctx().account}:${detail?.kind}:${detail?.resource?.[ids[detail?.kind]]}`;
+    if (key !== zoomContext) {
+      zoomContext = key;
+      canvasZoom = 1;
+    }
+    zoomCanvas(canvasZoom);
+    let pinch = null,
+      suppressClickUntil = 0;
+    const measure = (touches) => ({
+      distance: Math.hypot(
+        touches[0].clientX - touches[1].clientX,
+        touches[0].clientY - touches[1].clientY,
+      ),
+      x: (touches[0].clientX + touches[1].clientX) / 2,
+      y: (touches[0].clientY + touches[1].clientY) / 2,
+    });
+    canvas.addEventListener(
+      "touchstart",
+      (event) => {
+        if (event.touches.length !== 2) return;
+        event.preventDefault();
+        const point = measure(event.touches);
+        pinch = { ...point, zoom: canvasZoom };
+        suppressClickUntil = Date.now() + 400;
+      },
+      { passive: false },
+    );
+    canvas.addEventListener(
+      "touchmove",
+      (event) => {
+        if (!pinch || event.touches.length !== 2) return;
+        event.preventDefault();
+        const point = measure(event.touches);
+        if (pinch.distance)
+          zoomCanvas((pinch.zoom * point.distance) / pinch.distance, point);
+        suppressClickUntil = Date.now() + 400;
+      },
+      { passive: false },
+    );
+    const end = (event) => {
+      if (event.touches.length < 2) pinch = null;
+    };
+    canvas.addEventListener("touchend", end);
+    canvas.addEventListener("touchcancel", end);
+    canvas.addEventListener(
+      "click",
+      (event) => {
+        if (Date.now() < suppressClickUntil) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      },
+      true,
+    );
   }
   function topology(detail) {
     const resource = normalizeGtm(detail.resource),
@@ -2001,7 +2109,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
     else if (kind === "addresses")
       graph = `<div class="gtm-address-grid">${card("addresses", resource)}</div>`;
     else graph = card("monitors", resource);
-    return `<section class="gtm-workbench"><header class="gtm-workbench-head"><div class="toolbar">${button("返回列表", "gtm.close", {}, "text")}<strong>${e(gtmName(resource))}</strong>${badge("GTM 3.0")}</div><div class="toolbar">${button("刷新画布", "gtm.canvas.refresh", {}, "text")}${button("新建地址池", "gtm.create", { kind: "pools" }, "text", "plus")}${button("新建地址", "gtm.create", { kind: "addresses" }, "text", "plus")}</div></header><div class="gtm-workspace ${editor || opening ? "editing" : ""}"><div class="gtm-canvas" aria-label="GTM 关联画布"><div class="gtm-canvas-hint">点击节点直接编辑 · 管理关联可增删、排序 · 修改后提交保存</div><div class="gtm-graph gtm-graph-${kind}">${graph}</div></div>${inspectorShell()}</div></section>`;
+    return `<section class="gtm-workbench"><header class="gtm-workbench-head"><div class="toolbar">${button("返回列表", "gtm.close", {}, "text")}<strong>${e(gtmName(resource))}</strong>${badge("GTM 3.0")}</div><div class="toolbar">${button("刷新画布", "gtm.canvas.refresh", {}, "text")}${button("新建地址池", "gtm.create", { kind: "pools" }, "text", "plus")}${button("新建地址", "gtm.create", { kind: "addresses" }, "text", "plus")}</div></header><div class="gtm-workspace ${editor || opening ? "editing" : ""}"><div class="gtm-canvas" aria-label="GTM 关联画布"><div class="gtm-canvas-tools"><span class="gtm-canvas-hint">点击节点编辑 · 双指缩放画布</span><div class="gtm-zoom-controls" aria-label="画布缩放"><button type="button" class="button text" data-action="gtm.zoom.out" aria-label="缩小画布">−</button><button type="button" class="button text" data-action="gtm.zoom.reset" aria-label="重置画布缩放">100%</button><button type="button" class="button text" data-action="gtm.zoom.in" aria-label="放大画布">＋</button></div></div><div class="gtm-zoom-surface"><div class="gtm-graph gtm-graph-${kind}">${graph}</div></div></div>${inspectorShell()}</div></section>`;
   }
   function view(c) {
     nameIndex = null;
@@ -2197,6 +2305,9 @@ export function createGtm({ api, ctx, render, queryResources }) {
           : null,
       );
     },
+    "gtm.zoom.in": () => zoomCanvas(canvasZoom + 0.1),
+    "gtm.zoom.out": () => zoomCanvas(canvasZoom - 0.1),
+    "gtm.zoom.reset": () => zoomCanvas(1),
     "gtm.edit": (d) => edit(d.operation, d.kind, d.id),
     "gtm.back": () => {
       document.querySelector("#dialog").close();
@@ -2211,13 +2322,11 @@ export function createGtm({ api, ctx, render, queryResources }) {
       editor = null;
       opening = null;
       if (drawer) drawer.remove();
-      else {
-        document.querySelector("#gtm-inspector")?.remove();
-        document.querySelector(".gtm-workspace")?.classList.remove("editing");
-        document
-          .querySelectorAll(".gtm-node.selected")
-          .forEach((node) => node.classList.remove("selected"));
-      }
+      document.querySelector("#gtm-inspector")?.remove();
+      document.querySelector(".gtm-workspace")?.classList.remove("editing");
+      document
+        .querySelectorAll(".gtm-node.selected")
+        .forEach((node) => node.classList.remove("selected"));
       restoreListPosition(position);
     },
     "gtm.canvas.refresh": () => {
@@ -2272,6 +2381,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
   return {
     view,
     actions,
+    mount: mountCanvas,
     leave: () => {
       if (!mayDiscard()) return false;
       ++session;

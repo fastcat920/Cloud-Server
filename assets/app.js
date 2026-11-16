@@ -319,6 +319,7 @@ function render() {
     settings: settingsView,
   };
   shell(views[route]());
+  if (route === "gtm") gtm.mount();
 }
 function stat(label, value, note, name) {
   return `<div class="stat"><div class="stat-label">${e(label)}${icon(name)}</div><div class="stat-value">${e(value)}</div><div class="stat-note">${e(note)}</div></div>`;
@@ -806,6 +807,7 @@ async function queryResources() {
       c.items = c.domain
         ? result.DomainRecords?.Record || []
         : result.Domains?.Domain || [];
+      c.ttlOptions = result.TtlOptions || [];
       c.total = result.TotalCount || c.items.length;
     } else if (page === "cloudflare") {
       result = await api(c.zone ? "cf.records" : "cf.zones", {
@@ -939,6 +941,47 @@ function editDns(index, cf) {
   const c = ctx(),
     r = index !== undefined ? c.items[Number(index)] : null;
   const types = ["A", "AAAA", "CNAME", "TXT", "MX", "NS", "SRV", "CAA"];
+  const ttlOptions = [
+    ...new Set([
+      ...(cf
+        ? [
+            1,
+            ...(c.zonePlan?.toLowerCase().includes("enterprise") ? [30] : []),
+            60,
+            120,
+            300,
+            600,
+            1800,
+            3600,
+            7200,
+            43200,
+            86400,
+          ]
+        : c.ttlOptions?.length
+          ? c.ttlOptions
+          : [600, 1800, 3600, 43200, 86400]),
+      ...(r ? [Number(cf ? r.ttl : r.TTL)] : []),
+    ]),
+  ].filter((value) => Number.isInteger(value) && value > 0);
+  const ttl = select(
+    "ttl",
+    "TTL（缓存时间）",
+    ttlOptions.map((value) => ({
+      value,
+      label:
+        cf && value === 1
+          ? "自动"
+          : value < 60
+            ? `${value} 秒`
+            : value % 3600 === 0
+              ? `${value / 3600} 小时（${value} 秒）`
+              : value % 60 === 0
+                ? `${value / 60} 分钟（${value} 秒）`
+                : `${value} 秒`,
+    })),
+    r ? (cf ? r.ttl : r.TTL) : ttlOptions[0],
+    "required",
+  );
   modal(
     r ? "编辑解析记录" : "添加解析记录",
     cf
@@ -949,7 +992,7 @@ function editDns(index, cf) {
       "记录类型",
       types.map((v) => ({ value: v, label: v })),
       r ? (cf ? r.type : r.Type) : "A",
-    )}</div>${field("value", "记录值", r ? (cf ? r.content : r.Value) : "", "textarea")}${field("ttl", "TTL（Cloudflare 的 1 表示自动）", r ? (cf ? r.ttl : r.TTL) : cf ? 1 : 600, "number", 'required min="1"')}${field("priority", "优先级（MX / SRV 等）", r?.priority ?? r?.Priority ?? 10, "number", 'min="0"')}${cf ? check("proxied", "启用 Cloudflare 代理", r?.proxied) : ""}${cf ? `<details><summary>高级记录参数（SRV / CAA 等）</summary>${field("advanced", "JSON 参数", r?.data ? JSON.stringify({ data: r.data }, null, 2) : "{}", "textarea", 'class="code"')}</details>` : ""}`,
+    )}</div>${field("value", "记录值", r ? (cf ? r.content : r.Value) : "", "textarea")}${ttl}${field("priority", "优先级（MX / SRV 等）", r?.priority ?? r?.Priority ?? 10, "number", 'min="0"')}${cf ? check("proxied", "启用 Cloudflare 代理", r?.proxied) : ""}${cf ? `<details><summary>高级记录参数（SRV / CAA 等）</summary>${field("advanced", "JSON 参数", r?.data ? JSON.stringify({ data: r.data }, null, 2) : "{}", "textarea", 'class="code"')}</details>` : ""}`,
     async (data) => {
       if (cf) {
         const extra = JSON.parse(String(data.get("advanced") || "{}"));
@@ -963,6 +1006,7 @@ function editDns(index, cf) {
         };
         if (["MX", "SRV"].includes(payload.type))
           payload.priority = Number(data.get("priority"));
+        if (payload.proxied) payload.ttl = 1;
         if (payload.data) delete payload.content;
         await api("cf.save", {
           account_id: c.account,
@@ -987,6 +1031,21 @@ function editDns(index, cf) {
       await queryResources();
     },
   );
+  if (cf) {
+    const form = document.querySelector("#modal-form"),
+      ttlInput = form.elements.ttl,
+      proxy = form.elements.proxied;
+    let dnsOnlyTtl = String(r?.ttl ?? 1);
+    const sync = () => {
+      if (proxy.checked) {
+        if (!ttlInput.disabled) dnsOnlyTtl = ttlInput.value;
+        ttlInput.value = "1";
+      } else if (ttlInput.disabled) ttlInput.value = dnsOnlyTtl;
+      ttlInput.disabled = proxy.checked;
+    };
+    proxy.addEventListener("change", sync);
+    sync();
+  }
 }
 const actions = {
   "modal.close": () => dialog.close(),
@@ -1184,7 +1243,13 @@ const actions = {
     );
   },
   "zone.open": async (d) => {
-    Object.assign(ctx(), { zone: d.id, zoneName: d.name, page: 1 });
+    const zone = ctx().items.find((row) => row.id === d.id);
+    Object.assign(ctx(), {
+      zone: d.id,
+      zoneName: d.name,
+      zonePlan: zone?.plan?.name || "",
+      page: 1,
+    });
     await queryResources();
   },
   "zone.back": async () => {

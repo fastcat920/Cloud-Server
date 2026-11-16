@@ -55,7 +55,7 @@ with tempfile.TemporaryDirectory(prefix='cloud-native-http-') as directory:
   call('target.test',{'id':target_id},csrf)
   cf_id=call('account.save',{'name':'CF','provider':'cloudflare','enabled':True,'token':'test-token'},csrf)['data']
   assert call('cf.zones&account_id='+str(cf_id))['data']['result'][0]['id']=='test-zone'
-  assert call('dns.list&account_id='+str(account_id)+'&domain=example.com')['data']['TotalCount']==1
+  dns=call('dns.list&account_id='+str(account_id)+'&domain=example.com')['data'];assert dns['TotalCount']==1 and dns['TtlOptions']==[60,600,1800,3600]
   # Multipart restore verifies encrypted credentials are rewrapped, not copied under a wrong key.
   def multipart(action,fields,content):
    boundary='native-test-boundary';body=b''

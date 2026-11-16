@@ -380,7 +380,13 @@ final class Api
                 if ($domain) {
                     $params['DomainName'] = $domain;
                 }
-                return $this->cloud->rpc($a, $domain ? 'DescribeDomainRecords' : 'DescribeDomains', $params, service:'alidns');
+                $result=$this->cloud->rpc($a, $domain ? 'DescribeDomainRecords' : 'DescribeDomains', $params, service:'alidns');
+                if ($domain) {
+                    try { $info=$this->cloud->rpc($a,'DescribeDomainInfo',['DomainName'=>$domain,'NeedDetailAttributes'=>true],service:'alidns'); }
+                    catch (\RuntimeException) { $info=[]; }
+                    $result['TtlOptions']=Cloud::dnsTtlOptions($info);
+                }
+                return $result;
             case 'dns.save':case 'dns.delete':$a = $this->account();
                 $this->provider($a, 'aliyun');
                 $id = $this->text('record', 100, false);
