@@ -1663,7 +1663,7 @@ dialog::backdrop {
   content: "";
   position: absolute;
   height: 56px;
-  border-left: 1px solid var(--gtm-connector);
+  border-left: 1px var(--gtm-edge-style, solid) var(--gtm-connector);
   left: 50%;
   top: 100%;
 }
@@ -1690,7 +1690,7 @@ dialog::backdrop {
   right: -12px;
   top: 0;
   width: auto;
-  border-top: 1px solid var(--gtm-connector);
+  border-top: 1px var(--gtm-edge-style, solid) var(--gtm-connector);
 }
 .gtm-graph .gtm-lane:first-child::before {
   left: 50%;
@@ -1707,7 +1707,7 @@ dialog::backdrop {
   top: 0;
   left: 50%;
   height: 56px;
-  border-left: 1px solid var(--gtm-connector);
+  border-left: 1px var(--gtm-edge-style, solid) var(--gtm-connector);
 }
 .gtm-graph-pools .gtm-lane {
   padding-top: 0;
@@ -1726,7 +1726,7 @@ dialog::backdrop {
   height: 56px;
   width: auto;
   border: 0;
-  border-left: 1px solid var(--gtm-connector);
+  border-left: 1px var(--gtm-edge-style, solid) var(--gtm-connector);
 }
 .gtm-tree-addresses {
   display: flex;
@@ -1748,7 +1748,7 @@ dialog::backdrop {
   top: 0;
   left: -6px;
   right: -6px;
-  border-top: 1px solid var(--gtm-connector);
+  border-top: 1px var(--gtm-edge-style, solid) var(--gtm-connector);
 }
 .gtm-address-leaf:first-child::before {
   left: 50%;
@@ -1765,7 +1765,7 @@ dialog::backdrop {
   top: 0;
   height: 56px;
   left: 50%;
-  border-left: 1px solid var(--gtm-connector);
+  border-left: 1px var(--gtm-edge-style, solid) var(--gtm-connector);
 }
 .gtm-graph-list .gtm-lanes > .help {
   padding-top: 22px;
@@ -2042,4 +2042,50 @@ body:has(.gtm-drawer[open]) {
   margin: 4px 0 10px;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+/* Inactive routing branches and disabled-resource overlays. */
+.gtm-edge-inactive {
+  --gtm-edge-style: dashed;
+  --gtm-connector: #aeb5bf;
+}
+.gtm-node-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+.gtm-node-heading .tag {
+  flex: none;
+  margin-top: 1px;
+  white-space: nowrap;
+}
+.gtm-node-paused::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgb(255 255 255 / 55%);
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 2;
+}
+.gtm-pause-icon {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  width: 24px;
+  height: 24px;
+  z-index: 3;
+  color: var(--gtm-bad);
+  background: var(--surface);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.gtm-pause-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
 }

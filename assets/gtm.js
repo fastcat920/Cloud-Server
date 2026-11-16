@@ -368,10 +368,19 @@ export function gtmUpdateParameters(fields, before, parameters) {
   return patch;
 }
 export function gtmStatus(row) {
+  if (row.AvailableMode === "manual") {
+    const manual = row.ManualAvailableStatus || row.AvailableStatus;
+    if (manual === "available") return "good";
+    if (manual === "unavailable") return "bad";
+  }
   return (
     { ok: "good", ok_alert: "warn", exceptional: "bad" }[row.HealthStatus] ||
     "unknown"
   );
+}
+
+export function gtmEdgeInactive(row) {
+  return row.EnableStatus === "disable" || gtmStatus(row) === "bad";
 }
 
 export function moveGtmRow(items, from, to) {
@@ -416,16 +425,10 @@ export function initial(fields, resource, create) {
   };
   const value = {};
   for (const [key, spec] of Object.entries(fields)) {
-    if (
-      Object.hasOwn(defaults, key) &&
-      ["AvailableMode", "HealthJudgement", "ManualAvailableStatus"].includes(
-        key,
-      ) &&
-      (resource[key] === undefined ||
-        resource[key] === null ||
-        resource[key] === "")
-    )
-      value[key] = spec.enum?.[0] ?? defaults[key];
+    if (spec.enum?.length)
+      value[key] =
+        spec.enum.find((option) => String(option) === String(resource[key])) ??
+        spec.enum[0];
     else if (Object.hasOwn(resource, key))
       value[key] = project(resource[key], spec);
     else if (Object.hasOwn(defaults, key)) value[key] = defaults[key];
@@ -720,17 +723,9 @@ export function createGtm({ api, ctx, render, queryResources }) {
         selected = input.value;
       const values = choices(path.at(-1), {}, selected) || [];
       input.replaceChildren(
-        ...(container.dataset.required === "1"
-          ? [new Option("请选择…", "")]
-          : [new Option("未设置", "")]),
         ...values.map((row) => new Option(row.label, row.value)),
       );
-      if (editor.optionLoads?.[section]) {
-        const loading = new Option("正在加载其他选项…", "__gtm_loading");
-        loading.disabled = true;
-        input.append(loading);
-      }
-      input.value = selected;
+      input.value = selected || values[0]?.value || "";
       input.setAttribute(
         "aria-busy",
         editor.optionLoads?.[section] ? "true" : "false",
@@ -750,7 +745,9 @@ export function createGtm({ api, ctx, render, queryResources }) {
       status.innerHTML = editor.optionErrors?.[section]
         ? e(editor.optionErrors[section]) +
           button("重试", "gtm.options.retry", { section }, "text")
-        : "";
+        : editor.optionLoads?.[section]
+          ? "正在加载选项…"
+          : "";
     }
   }
   function requestEditorOptions(section, retry = false) {
@@ -871,6 +868,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
           label: row.DisplayName || row.Name || row.Code,
         }));
     if (
+      !spec.enum &&
       result &&
       value !== undefined &&
       value !== "" &&
@@ -1151,28 +1149,8 @@ export function createGtm({ api, ctx, render, queryResources }) {
       input = select(
         name,
         spec.label,
-        [
-          ...(explicit && !valid
-            ? [
-                {
-                  value: "",
-                  label:
-                    key === "HealthJudgement" &&
-                    Object.hasOwn(editor.spec.fields, "HealthTasks") &&
-                    !editor.values.HealthTasks?.length
-                      ? "未关联探测任务，可暂不填写"
-                      : editor.spec.create
-                        ? "请选择"
-                        : "云端未返回有效值，请选择",
-                  disabled: true,
-                },
-              ]
-            : explicit || spec.required
-              ? []
-              : [{ value: "", label: "未设置" }]),
-          ...opts,
-        ],
-        valid ? (value ?? "") : "",
+        opts,
+        valid ? (value ?? "") : (opts[0]?.value ?? ""),
         required,
       );
     else if (spec.type === "boolean") input = check(name, spec.label, !!value);
@@ -1403,7 +1381,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
               )
             : "")
         : "";
-    box.innerHTML = `<form id="gtm-editor-form"><header class="gtm-inspector-head"><div><small>${e(kinds[editor.spec.kind])}</small><h3 id="gtm-editor-title">${e(gtmName(editor.resource))}</h3></div>${button("×", "gtm.inspector.close", {}, "icon-only")}</header><div class="gtm-inspector-body"><div class="dialog-error" role="alert"></div>${editorBody()}${extra ? `<section class="gtm-editor-section gtm-editor-actions" aria-label="资源操作"><div class="toolbar">${extra}</div></section>` : ""}</div><footer class="gtm-inspector-foot">${button("关闭", "gtm.inspector.close", {}, "text")}<button type="submit" class="button primary">预览并提交</button></footer></form>`;
+    box.innerHTML = `<form id="gtm-editor-form"><header class="gtm-inspector-head"><div><small>${e(kinds[editor.spec.kind])}</small><h3 id="gtm-editor-title">${e(gtmName(editor.resource))}</h3></div>${button("×", "gtm.inspector.close", {}, "icon-only")}</header><div class="gtm-inspector-body"><div class="dialog-error" role="alert"></div>${editorBody()}${extra ? `<section class="gtm-editor-section gtm-editor-actions" aria-label="资源操作"><div class="toolbar">${extra}</div></section>` : ""}</div><footer class="gtm-inspector-foot">${button("关闭", "gtm.inspector.close", {}, "text")}<button type="submit" class="button primary">提交</button></footer></form>`;
     const onSubmit = async (_, form) => {
       editor.values = collect(form);
       const parameters = payload();
@@ -1432,140 +1410,124 @@ export function createGtm({ api, ctx, render, queryResources }) {
         if (!steps.length) throw new Error("没有修改内容，无需提交");
         request = steps.length === 1 ? steps[0] : { steps };
       }
+      const savedEditor = editor;
       let preview;
       try {
         preview = await api("gtm.preview", {
-          account_id: editor.account,
-          expected_token: editor.token,
+          account_id: savedEditor.account,
+          expected_token: savedEditor.token,
           ...request,
         });
       } catch (error) {
         detailCache.clear();
         throw error;
       }
-      const savedEditor = editor;
-      setTimeout(() => {
-        if (editor?.session !== currentSession) return;
-        const changes = gtmChanges(
-          preview.before,
-          preview.parameters,
-          savedEditor.spec.fields,
-          savedEditor.spec.delete,
+      if (editor?.session !== currentSession) return;
+      const perform = async () => {
+        detailCache.clear();
+        const result = await api("gtm.action", {
+          account_id: savedEditor.account,
+          ticket: preview.ticket,
+        });
+        const c = ctx();
+        delete c.gtmOptions;
+        toast(
+          result.partial
+            ? "部分变更已提交，后续步骤已停止：" +
+                (result.error || "等待云端确认，请刷新后核对")
+            : result.verification === "confirmed"
+              ? "阿里云已确认配置更新"
+              : "请求已提交，请刷新查询云端状态",
         );
-        modal(
-          "确认 GTM 变更",
-          `将对「${gtmName(savedEditor.resource)}」执行「${preview.label}」。${preview.references.length ? `影响 ${preview.references.length} 项引用资源。` : ""}DNS 缓存可能使解析结果延后更新。`,
-          table(
-            ["参数", "原值", "提交值"],
-            changes.map((change) => [
-              e(displayChangePath(change.path, savedEditor.spec.fields)),
-              formatValue(change.before),
-              formatValue(change.after),
-            ]),
-          ) +
-            `<div class="toolbar">${button("返回编辑", "gtm.back", {}, "text")}</div>`,
-          async () => {
-            detailCache.clear();
-            const result = await api("gtm.action", {
-              account_id: savedEditor.account,
-              ticket: preview.ticket,
+        const root = savedEditor.root;
+        document.querySelector("#gtm-drawer")?.close();
+        editor = null;
+        detailCache.clear();
+        if (
+          !result.partial &&
+          result.verification === "confirmed" &&
+          result.resource &&
+          result.token
+        )
+          rememberDetail(result.kind, result.resource_id, {
+            kind: result.kind,
+            resource: result.resource,
+            token: result.token,
+          });
+        const removedRoot =
+          root &&
+          savedEditor.spec.delete &&
+          root.kind === savedEditor.spec.kind &&
+          root.id === result.resource_id;
+        if (root && !removedRoot) {
+          if (
+            !result.partial &&
+            result.verification === "confirmed" &&
+            result.kind === root.kind &&
+            result.resource_id === root.id &&
+            result.token
+          ) {
+            c.gtmDetail = {
+              kind: root.kind,
+              resource: result.resource,
+              token: result.token,
+            };
+            updateListedResource(c.gtmDetail);
+            render();
+          } else await open(root.kind, root.id, true);
+        } else {
+          c.gtmDetail = null;
+          await queryResources();
+          if (
+            !result.partial &&
+            result.verification === "confirmed" &&
+            result.resource &&
+            result.token
+          )
+            rememberDetail(result.kind, result.resource_id, {
+              kind: result.kind,
+              resource: result.resource,
+              token: result.token,
             });
-            const c = ctx();
-            delete c.gtmOptions;
-            toast(
-              result.partial
-                ? "部分变更已提交，后续步骤已停止：" +
-                    (result.error || "等待云端确认，请刷新后核对")
-                : result.verification === "confirmed"
-                  ? "阿里云已确认配置更新"
-                  : "请求已提交，请刷新查询云端状态",
-            );
-            const root = savedEditor.root;
-            document.querySelector("#gtm-drawer")?.close();
-            editor = null;
-            detailCache.clear();
-            if (
-              !result.partial &&
-              result.verification === "confirmed" &&
-              result.resource &&
-              result.token
-            )
-              rememberDetail(result.kind, result.resource_id, {
-                kind: result.kind,
-                resource: result.resource,
-                token: result.token,
-              });
-            const removedRoot =
-              root &&
-              savedEditor.spec.delete &&
-              root.kind === savedEditor.spec.kind &&
-              root.id === result.resource_id;
-            if (root && !removedRoot) {
-              if (
-                !result.partial &&
-                result.verification === "confirmed" &&
-                result.kind === root.kind &&
-                result.resource_id === root.id &&
-                result.token
-              ) {
-                c.gtmDetail = {
-                  kind: root.kind,
-                  resource: result.resource,
-                  token: result.token,
-                };
-                updateListedResource(c.gtmDetail);
-                render();
-              } else await open(root.kind, root.id, true);
-            } else {
-              c.gtmDetail = null;
-              await queryResources();
-              if (
-                !result.partial &&
-                result.verification === "confirmed" &&
-                result.resource &&
-                result.token
-              )
-                rememberDetail(result.kind, result.resource_id, {
-                  kind: result.kind,
-                  resource: result.resource,
-                  token: result.token,
-                });
-              restoreListPosition(savedEditor.returnTo);
-            }
-            if (savedEditor.attach && result.resource_id) {
-              const parent = savedEditor.attach;
-              await edit(
-                parent.kind === "list"
-                  ? "ReplaceCloudGtmInstanceConfigAddressPool"
-                  : "ReplaceCloudGtmAddressPoolAddress",
-                parent.kind,
-                parent.id,
-              );
-              const field =
-                  parent.kind === "list" ? "AddressPools" : "Addresses",
-                idField =
-                  parent.kind === "list" ? "AddressPoolId" : "AddressId";
-              editor.values[field] ??= [];
-              editor.values[field].push({
-                [idField]: result.resource_id,
-                WeightValue: 1,
-                SerialNumber:
-                  Math.max(
-                    0,
-                    ...editor.values[field].map(
-                      (row) => Number(row.SerialNumber) || 0,
-                    ),
-                  ) + 1,
-                RequestSource: ["default"],
-              });
-              editor.bindingHint =
-                "新资源已创建，当前尚未绑定。请预览并确认此关联。";
-              drawEditor();
-            }
-          },
-          "确认提交",
+          restoreListPosition(savedEditor.returnTo);
+        }
+        if (savedEditor.attach && result.resource_id) {
+          const parent = savedEditor.attach;
+          await edit(
+            parent.kind === "list"
+              ? "ReplaceCloudGtmInstanceConfigAddressPool"
+              : "ReplaceCloudGtmAddressPoolAddress",
+            parent.kind,
+            parent.id,
+          );
+          const field = parent.kind === "list" ? "AddressPools" : "Addresses",
+            idField = parent.kind === "list" ? "AddressPoolId" : "AddressId";
+          editor.values[field] ??= [];
+          editor.values[field].push({
+            [idField]: result.resource_id,
+            WeightValue: 1,
+            SerialNumber:
+              Math.max(
+                0,
+                ...editor.values[field].map(
+                  (row) => Number(row.SerialNumber) || 0,
+                ),
+              ) + 1,
+            RequestSource: ["default"],
+          });
+          editor.bindingHint = "新资源已创建，当前尚未绑定。请提交保存此关联。";
+          drawEditor();
+        }
+      };
+      if (savedEditor.spec.delete) {
+        modal(
+          "确认删除 GTM 资源",
+          `将删除「${gtmName(savedEditor.resource)}」。`,
+          "",
+          perform,
+          "删除",
         );
-      }, 0);
+      } else await perform();
     };
     document
       .querySelectorAll(".gtm-node[data-id]")
@@ -1582,6 +1544,9 @@ export function createGtm({ api, ctx, render, queryResources }) {
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const btn = event.submitter;
+      const submittingEditor = editor;
+      if (submittingEditor.submitting) return;
+      submittingEditor.submitting = true;
       btn.disabled = true;
       try {
         await onSubmit(new FormData(form), form);
@@ -1589,6 +1554,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
         form.querySelector(".dialog-error").innerHTML =
           e(error.message) + errorDetails(error.details);
       } finally {
+        submittingEditor.submitting = false;
         btn.disabled = false;
       }
     });
@@ -2001,7 +1967,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
       const selected =
         editor?.spec.kind === type &&
         editor.resource[ids[type]] === row[ids[type]];
-      return `<article role="button" tabindex="0" aria-label="编辑 ${e(gtmName(row))}" data-action="gtm.edit" data-kind="${type}" data-id="${e(row[ids[type]])}" data-operation="${opFor(type, "basic")}" class="gtm-node gtm-node-${type} gtm-state-${gtmStatus(row)} ${selected ? "selected" : ""}"><div class="gtm-node-title"><span class="gtm-node-name">${e(gtmName(row))}</span><span class="gtm-kind">${e(kinds[type])}</span></div><div class="gtm-node-meta">${stateBadge(row)}${row.Ttl ? `<span>TTL ${e(row.Ttl)}s</span>` : ""}</div>${row.Address ? `<div class="gtm-node-address mono">${e(row.Address)}</div>` : ""}${type === "addresses" && row.HealthTasks?.length ? `<div class="gtm-monitor-chips">${row.HealthTasks.map((task) => `<span data-gtm-template="${e(task.TemplateId)}" data-port="${e(task.Port ?? "")}">${e(task.TemplateName || displayName(knownResources().get(task.TemplateId)))}${task.Port !== undefined ? ":" + e(task.Port) : ""}</span>`).join("")}</div>` : ""}</article>`;
+      return `<article role="button" tabindex="0" aria-label="${row.EnableStatus === "disable" ? "未启用，" : ""}编辑 ${e(gtmName(row))}" data-action="gtm.edit" data-kind="${type}" data-id="${e(row[ids[type]])}" data-operation="${opFor(type, "basic")}" class="gtm-node gtm-node-${type} gtm-state-${gtmStatus(row)} ${row.EnableStatus === "disable" ? "gtm-node-paused" : ""} ${selected ? "selected" : ""}"><div class="gtm-node-title"><span class="gtm-node-heading">${stateBadge(row)}<span class="gtm-node-name">${e(gtmName(row))}</span></span><span class="gtm-kind">${e(kinds[type])}</span></div>${row.EnableStatus === "disable" ? '<span class="gtm-pause-icon" role="img" aria-label="未启用" title="未启用"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9 7v10M15 7v10"/></svg></span>' : ""}${row.Ttl ? `<div class="gtm-node-meta">TTL ${e(row.Ttl)}s</div>` : ""}${row.Address ? `<div class="gtm-node-address mono">${e(row.Address)}</div>` : ""}${type === "addresses" && row.HealthTasks?.length ? `<div class="gtm-monitor-chips">${row.HealthTasks.map((task) => `<span data-gtm-template="${e(task.TemplateId)}" data-port="${e(task.Port ?? "")}">${e(task.TemplateName || displayName(knownResources().get(task.TemplateId)))}${task.Port !== undefined ? ":" + e(task.Port) : ""}</span>`).join("")}</div>` : ""}</article>`;
     };
     const incoming = (row, strategy) => {
       const text =
@@ -2023,16 +1989,17 @@ export function createGtm({ api, ctx, render, queryResources }) {
     };
     const branch = (pool) => {
       const children = pool.Addresses || [];
-      return `<section class="gtm-lane gtm-edge-${gtmStatus(pool)}">${kind === "list" ? incoming(pool, resource.AddressPoolLbStrategy) : ""}<div class="gtm-pool-column ${children.length ? "" : "gtm-no-children"}">${card("pools", pool)}${outgoing(pool, children.length)}</div><div class="gtm-address-grid gtm-tree-addresses">${children.map((address) => `<div class="gtm-address-leaf gtm-edge-${gtmStatus(address)}">${incoming(address, pool.AddressLbStrategy)}${card("addresses", address)}</div>`).join("") || '<span class="help">暂无地址，点击地址池，在编辑区添加。</span>'}</div></section>`;
+      const inactive = gtmEdgeInactive(pool) || gtmEdgeInactive(resource);
+      return `<section class="gtm-lane gtm-edge-${gtmStatus(pool)} ${inactive ? "gtm-edge-inactive" : ""}">${kind === "list" ? incoming(pool, resource.AddressPoolLbStrategy) : ""}<div class="gtm-pool-column ${children.length ? "" : "gtm-no-children"}">${card("pools", pool)}${outgoing(pool, children.length)}</div><div class="gtm-address-grid gtm-tree-addresses">${children.map((address) => `<div class="gtm-address-leaf gtm-edge-${gtmStatus(address)} ${inactive || gtmEdgeInactive(address) ? "gtm-edge-inactive" : ""}">${incoming(address, pool.AddressLbStrategy)}${card("addresses", address)}</div>`).join("") || '<span class="help">暂无地址，点击地址池，在编辑区添加。</span>'}</div></section>`;
     };
     let graph;
     if (kind === "list")
-      graph = `<div class="gtm-domain-column gtm-edge-${gtmStatus(resource)} ${(resource.AddressPools || []).length ? "" : "gtm-no-children"}">${card("list", resource)}${outgoing(resource, resource.AddressPools?.length)}</div><div class="gtm-lanes">${(resource.AddressPools || []).map(branch).join("") || '<p class="help">暂无地址池，点击接入域名，在编辑区添加。</p>'}</div>`;
+      graph = `<div class="gtm-domain-column gtm-edge-${gtmStatus(resource)} ${gtmEdgeInactive(resource) ? "gtm-edge-inactive" : ""} ${(resource.AddressPools || []).length ? "" : "gtm-no-children"}">${card("list", resource)}${outgoing(resource, resource.AddressPools?.length)}</div><div class="gtm-lanes">${(resource.AddressPools || []).map(branch).join("") || '<p class="help">暂无地址池，点击接入域名，在编辑区添加。</p>'}</div>`;
     else if (kind === "pools") graph = branch(resource);
     else if (kind === "addresses")
       graph = `<div class="gtm-address-grid">${card("addresses", resource)}</div>`;
     else graph = card("monitors", resource);
-    return `<section class="gtm-workbench"><header class="gtm-workbench-head"><div class="toolbar">${button("返回列表", "gtm.close", {}, "text")}<strong>${e(gtmName(resource))}</strong>${badge("GTM 3.0")}</div><div class="toolbar">${button("刷新画布", "gtm.canvas.refresh", {}, "text")}${button("新建地址池", "gtm.create", { kind: "pools" }, "text", "plus")}${button("新建地址", "gtm.create", { kind: "addresses" }, "text", "plus")}</div></header><div class="gtm-workspace ${editor || opening ? "editing" : ""}"><div class="gtm-canvas" aria-label="GTM 关联画布"><div class="gtm-canvas-hint">点击节点直接编辑 · 管理关联可增删、排序 · 修改后预览确认</div><div class="gtm-graph gtm-graph-${kind}">${graph}</div></div>${inspectorShell()}</div></section>`;
+    return `<section class="gtm-workbench"><header class="gtm-workbench-head"><div class="toolbar">${button("返回列表", "gtm.close", {}, "text")}<strong>${e(gtmName(resource))}</strong>${badge("GTM 3.0")}</div><div class="toolbar">${button("刷新画布", "gtm.canvas.refresh", {}, "text")}${button("新建地址池", "gtm.create", { kind: "pools" }, "text", "plus")}${button("新建地址", "gtm.create", { kind: "addresses" }, "text", "plus")}</div></header><div class="gtm-workspace ${editor || opening ? "editing" : ""}"><div class="gtm-canvas" aria-label="GTM 关联画布"><div class="gtm-canvas-hint">点击节点直接编辑 · 管理关联可增删、排序 · 修改后提交保存</div><div class="gtm-graph gtm-graph-${kind}">${graph}</div></div>${inspectorShell()}</div></section>`;
   }
   function view(c) {
     nameIndex = null;

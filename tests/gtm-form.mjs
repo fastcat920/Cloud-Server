@@ -114,7 +114,7 @@ for (const [row, label] of [
 assert.equal(gtmStatus({HealthStatus:'ok',AvailableStatus:'unavailable',EnableStatus:'disable'}),'good');
 assert.equal(gtmStatus({AvailableStatus:'available'}),'unknown');
 assert.equal(gtmStatus({HealthStatus:'ok_alert',AvailableStatus:'unavailable'}),'warn');
-console.log('PASS: health-only colors and labels ignore manual availability and enable status');
+console.log('PASS: automatic-mode colors follow health and ignore stale manual values');
 
 const { gtmUpdateParameters } = await import('../assets/gtm.js');
 const editFields = { AddressId:{type:'string',required:true}, Name:{type:'string'}, HealthTasks:{type:'array',items:{type:'object',properties:{TemplateId:{type:'string'},Port:{type:'integer'}}}} };
@@ -148,9 +148,9 @@ assert(!errorDetails({code:'InvalidParameter'}).includes('<details open'));
 console.log('PASS: health-check dependent fields, Chinese preview paths and escaped collapsed diagnostics');
 
 const explicitFields = {
-  AvailableMode: { type: "string", required: true },
-  HealthJudgement: { type: "string" },
-  ManualAvailableStatus: { type: "string" },
+  AvailableMode: { type: "string", required: true, enum: ["auto", "manual"] },
+  HealthJudgement: { type: "string", enum: ["any_ok", "all_ok"] },
+  ManualAvailableStatus: { type: "string", enum: ["available", "unavailable"] },
 };
 assert.deepEqual(initial(explicitFields, {}, true), { AvailableMode: "auto", HealthJudgement: "any_ok", ManualAvailableStatus: "available" });
 assert.deepEqual(initial(explicitFields, {}, false), { AvailableMode: "auto", HealthJudgement: "any_ok", ManualAvailableStatus: "available" });
@@ -172,3 +172,13 @@ assert.deepEqual(
 );
 
 assert.equal(initial(explicitFields, {AvailableMode: null, HealthJudgement: ""}, false).HealthJudgement, "any_ok");
+
+const {gtmEdgeInactive} = await import('../assets/gtm.js');
+assert.equal(gtmStatus({AvailableMode:'manual', ManualAvailableStatus:'unavailable',HealthStatus:'ok'}),'bad');
+assert.equal(gtmStatus({AvailableMode:'manual', ManualAvailableStatus:'available',HealthStatus:'exceptional'}),'good');
+assert.equal(gtmStatus({AvailableMode:'auto', ManualAvailableStatus:'unavailable',HealthStatus:'ok'}),'good');
+assert.equal(gtmEdgeInactive({EnableStatus:'disable',HealthStatus:'ok'}),true);
+assert.equal(gtmEdgeInactive({HealthStatus:'exceptional'}),true);
+assert.equal(gtmEdgeInactive({HealthStatus:'ok_alert'}),false);
+assert.equal(gtmEdgeInactive({AvailableMode:'manual',ManualAvailableStatus:'unavailable',HealthStatus:'ok'}),true);
+assert.equal(initial(explicitFields,{AvailableMode:'unknown'},false).AvailableMode,'auto');
