@@ -241,6 +241,7 @@ final class Api
             case 'notify.source.save':return (new Notifications($this->store,$this->security))->saveSource($this->input);
             case 'notify.channel.delete':case 'notify.source.delete':$this->confirmation((string)$this->id());return (new Notifications($this->store,$this->security))->remove($action==='notify.channel.delete'?'channel':'source',$this->id());
             case 'notify.source.rotate':$this->confirmation((string)$this->id());return (new Notifications($this->store,$this->security))->rotate($this->id());
+            case 'notify.verify':$this->limited('notify.verify',10,60);return (new Notifications($this->store,$this->security))->verify($this->id());
             case 'notify.test':$this->limited('notify.test',10,60);return (new Notifications($this->store,$this->security))->test($this->id());
             case 'notify.retry':$this->limited('notify.retry',10,60);return (new Notifications($this->store,$this->security))->retry($this->id());
             case 'notify.process':return (new Notifications($this->store,$this->security))->process(5);

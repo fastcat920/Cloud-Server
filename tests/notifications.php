@@ -8,6 +8,11 @@ $token='123456:'.str_repeat('a',32);$sent=[];
 Http::$transport=function($method,$url,$headers,$body)use(&$sent,$token){ensureN($method==='POST' && $url==='https://api.telegram.org/bot'.$token.'/sendMessage','Fixed Telegram endpoint');$sent[]=json_decode($body,true);return ['status'=>200,'body'=>'{"ok":true}'];};
 try{
  $channel=$n->saveChannel(['name'=>'TG','chat_id'=>'-100123456','token'=>$token,'enabled'=>true,'thread_id'=>'123']);
+ Http::$transport=fn($method,$url)=>['status'=>200,'body'=>'{"ok":true,"result":{"id":123456,"username":"notice_test_bot","first_name":"Notice"}}'];
+ $bot=$n->verify($channel);ensureN($bot['username']==='notice_test_bot' && !isset($bot['token']),'Validate bot identity without exposing token');
+ Http::$transport=fn()=>['status'=>401,'body'=>'{"ok":false,"error_code":401,"description":"Unauthorized"}'];
+ try{$n->verify($channel);throw new LogicException('Invalid token verified');}catch(ApiError $e){ensureN(str_contains($e->getMessage(),'Bot Token') && str_contains($e->getMessage(),'401'),'Token authentication failure explained');}
+ Http::$transport=function($method,$url,$headers,$body)use(&$sent,$token){ensureN(str_ends_with($url,'/sendMessage'),'Send only when explicitly requested');$sent[]=json_decode($body,true);return ['status'=>200,'body'=>'{"ok":true}'];};
  $source=$n->saveSource(['name'=>'GTM','channel_id'=>$channel,'enabled'=>true]);$key=$n->listing()['sources'][0]['webhook_key'];
  ensureN(!str_contains(json_encode($store->read()),$token) && !str_contains(json_encode($store->read()),$key),'Credentials encrypted at rest');
  ensureN(!isset($n->listing()['channels'][0]['token']),'Channel token never returned');
@@ -34,5 +39,8 @@ try{
  try{$n->remove('channel',$channel);throw new LogicException('Referenced channel deleted');}catch(ApiError){}
  $n->remove('source',$source);$n->remove('channel',$channel);
  ensureN(str_contains(Notifications::message(['msgtype'=>'markdown','markdown'=>['text'=>'恢复通知']]),'恢复通知'),'Bot callback format');
+ ensureN(str_contains(Notifications::telegramError(400,'Bad Request: chat not found'),'接收目标'),'Unknown chat error localized');
+ ensureN(str_contains(Notifications::telegramError(403,'Forbidden: bot was blocked by the user'),'屏蔽'),'Blocked bot error localized');
+ ensureN(str_contains(Notifications::telegramError(400,'Bad Request: message thread not found'),'话题 ID'),'Forum topic error localized');
  echo "PASS: notification encryption, callback auth, input formats, deduplication, queued send, recovery, backoff, retry, rotation and reference safety\n";
 }finally{Http::$transport=null;foreach(glob($dir.'/*')?:[] as $p)if(is_file($p))unlink($p);rmdir($dir);}

@@ -75,7 +75,7 @@ export function createNotifications({ api, render }) {
             e(row.chat_id) +
               (row.thread_id ? ` · 话题 ${e(row.thread_id)}` : ""),
             row.enabled ? "启用" : "停用",
-            `<div class="toolbar">${button("编辑", "notify.channel", { id: row.id }, "text")}${button("测试发送", "notify.test", { id: row.id }, "text")}${button("删除", "notify.delete", { kind: "channel", id: row.id }, "text danger")}</div>`,
+            `<div class="toolbar">${button("编辑", "notify.channel", { id: row.id }, "text")}${button("验证机器人", "notify.verify", { id: row.id }, "text")}${button("测试发送", "notify.test", { id: row.id }, "text")}${button("删除", "notify.delete", { kind: "channel", id: row.id }, "text danger")}</div>`,
           ]),
         ),
       ) +
@@ -117,7 +117,7 @@ export function createNotifications({ api, render }) {
     const row = find("channels", d.id);
     modal(
       row ? "编辑通知渠道" : "新增 Telegram 渠道",
-      "通过 BotFather 获取 Token；私聊先发送 /start，群组先加入机器人。Token 留空保留原值；先保存，再测试发送。",
+      "Token 请从 BotFather 完整复制并保存。/start 要发给你自己的机器人；本项目只发送通知，不会回复该命令。Chat ID 是接收者或群组的 ID，不是机器人用户名或 Token 开头的数字。",
       field("name", "渠道名称", row?.name || "", "text", "required") +
         field(
           "token",
@@ -201,6 +201,16 @@ export function createNotifications({ api, render }) {
         "关闭",
       );
     },
+    "notify.verify": async (d) => {
+      const bot = await api("notify.verify", { id: Number(d.id) });
+      modal(
+        "机器人验证成功",
+        "Token 有效，请确认下面是你要使用的机器人。",
+        `<p>${e(bot.name)} · @${e(bot.username)}</p><p><a href="https://t.me/${encodeURIComponent(bot.username)}" target="_blank" rel="noreferrer">打开这个机器人，发送 /start</a></p><p class="help">没有自动回复是正常的。返回本项目，填写接收者 Chat ID 并点击测试发送。</p>`,
+        async () => {},
+        "关闭",
+      );
+    },
     "notify.test": async (d) => {
       const result = await api("notify.test", { id: Number(d.id) });
       await load();
@@ -209,7 +219,7 @@ export function createNotifications({ api, render }) {
           ? "测试消息已发送"
           : ["pending", "sending"].includes(result.status)
             ? "测试消息已入队，请稍后刷新投递记录"
-            : "测试消息未送达，请查看投递记录",
+            : result.error || "测试消息未送达，请查看投递记录",
         ["failed", "retry"].includes(result.status),
       );
     },

@@ -20,6 +20,7 @@ with tempfile.TemporaryDirectory(prefix='notification-http-') as directory:
   csrf=b['csrf'];call('setup',{'email':'notice@test.local','password':'notification-password'},csrf);call('login',{'email':'notice@test.local','password':'notification-password'},csrf);csrf=call('boot')['data']['csrf']
   call('notify.list',status=401,public=True)
   channel=call('notify.channel.save',{'name':'Bot','token':'123456:'+('a'*32),'chat_id':'-100123456','thread_id':'','enabled':True},csrf)['data']
+  assert call('notify.verify',{'id':channel},csrf)['data']['username']=='notice_test_bot'
   source=call('notify.source.save',{'name':'Aliyun GTM','channel_id':channel,'enabled':True},csrf)['data'];config=call('notify.list')['data'];key=config['sources'][0]['webhook_key']
   assert 'token' not in config['channels'][0]
   overview=call('overview')['data'];assert not any(k.startswith('notification_') for k in overview)

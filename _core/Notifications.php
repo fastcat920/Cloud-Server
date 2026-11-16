@@ -117,6 +117,34 @@ final class Notifications
         $keep=array_column(array_slice(array_values($done),-200),'id');
         $s['notification_jobs']=array_values(array_filter($s['notification_jobs'] ?? [],fn($r)=>in_array($r['status'],['pending','retry','sending'],true)||in_array($r['id'],$keep,true)));
     }
+    public static function telegramError(int $code,string $description=''): string
+    {
+        $reason=strtolower($description);
+        $message=match(true) {
+            $code===401 || $code===404=>'Bot Token 无效、已撤销或复制不完整。请从 BotFather 重新复制该机器人的完整 Token（包含冒号），在渠道中替换并保存；发送 /start 或修改 Chat ID 不能解决此错误',
+            str_contains($reason,'message thread not found') || str_contains($reason,'thread_id')=>'话题 ID 不正确。私聊请清空话题 ID；群组请填写实际话题 ID',
+            str_contains($reason,'bot was blocked')=>'你已屏蔽该机器人，请取消屏蔽，并向这个机器人发送 /start',
+            str_contains($reason,"bot can't send messages to bots")=>'Chat ID 填成了机器人。请填写接收消息的用户或群组 Chat ID',
+            str_contains($reason,'chat not found')=>'接收目标不存在或机器人尚未加入。请核对 Chat ID，并向这个机器人发送 /start；私聊不能填写机器人用户名或 Token 开头的数字',
+            $code===403=>'机器人没有发送权限。请确认已加入目标群组或频道、具备发消息权限，且未被接收者屏蔽',
+            $code===429=>'发送频率受限，将按 Telegram 要求等待后重试',
+            $code===400=>'消息参数不正确，请核对 Chat ID 和话题 ID',
+            default=>'请求失败，请稍后重试或检查服务器到 Telegram 的网络连接',
+        };
+        return 'Telegram（'.$code.'）：'.$message;
+    }
+    public function verify(int $channelId): array
+    {
+        $channel=Store::find($this->store->read(),'notification_channels',$channelId);
+        $token=$this->security->decrypt($channel['token']);
+        try {$response=Http::request('POST','https://api.telegram.org/bot'.$token.'/getMe',['Content-Type'=>'application/json'],'{}',timeout:4);}
+        catch(\Throwable){throw new ApiError('Telegram 连接失败或超时，请检查服务器网络');}
+        $data=json_decode($response['body'],true);
+        if($response['status']<200 || $response['status']>=300 || !is_array($data) || empty($data['ok'])) throw new ApiError(self::telegramError((int)($data['error_code'] ?? $response['status']),(string)($data['description'] ?? '')));
+        $bot=$data['result'] ?? [];
+        if(!isset($bot['id'],$bot['username']) || !preg_match('/^[A-Za-z0-9_]+$/',$bot['username']))throw new ApiError('Telegram 返回的机器人信息不完整');
+        return ['id'=>$bot['id'],'username'=>$bot['username'],'name'=>$bot['first_name'] ?? $bot['username']];
+    }
     public function test(int $channelId): array
     {
         $job=$this->enqueue($channelId,0,'测试消息','Cloud Desk 消息通知测试：Telegram 渠道连接成功。',bin2hex(random_bytes(32)));
@@ -156,7 +184,7 @@ final class Notifications
                     try {$response=Http::request('POST','https://api.telegram.org/bot'.$token.'/sendMessage',['Content-Type'=>'application/json'],json_encode($body,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),timeout:4);}
                     catch(\Throwable){throw new \RuntimeException('Telegram 连接失败或超时，请检查服务器网络后重试');}
                     $data=json_decode($response['body'],true);
-                    if($response['status']<200 || $response['status']>=300 || !is_array($data)||empty($data['ok'])) { $code=(int)($data['error_code'] ?? $response['status']);$permanent=in_array($code,[400,401,403,404],true);$retryAfter=max(0,min(86400,(int)($data['parameters']['retry_after'] ?? 0)));throw new \RuntimeException($code===429?'Telegram 发送频率受限，请稍后重试':'Telegram 拒绝消息（'.$code.'），请检查 Bot Token、Chat ID 和机器人权限'); }
+                    if($response['status']<200 || $response['status']>=300 || !is_array($data)||empty($data['ok'])) { $code=(int)($data['error_code'] ?? $response['status']);$permanent=in_array($code,[400,401,403,404],true);$retryAfter=max(0,min(86400,(int)($data['parameters']['retry_after'] ?? 0)));throw new \RuntimeException(self::telegramError($code,(string)($data['description'] ?? ''))); }
                     $status='sent';$error='';
                 }catch(\Throwable $e){$status=$cancelled || $e->getMessage()==='记录不存在'?'cancelled':(!$permanent && $job['attempts']<3?'retry':'failed');$error=$e instanceof \RuntimeException?$e->getMessage():'消息发送失败';}
                 $this->store->transaction(function(&$s)use($job,$status,$error,$retryAfter){foreach($s['notification_jobs'] as &$r)if($r['id']===$job['id'] && $r['dedupe']===$job['dedupe'] && $r['status']==='sending'){$r['status']=$status;$r['error']=$error;$r['updated_at']=time();$r['next_at']=time()+max($retryAfter,$job['attempts']===1?60:300);}unset($r);$this->trim($s);});

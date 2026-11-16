@@ -176,7 +176,7 @@ v1 的发布包保留在 [GitHub Releases](https://github.com/fastcat920/Cloud-S
 
 独立的「消息通知」菜单将通知渠道、告警来源和投递记录分开管理。首个渠道为 Telegram；阿里云 GTM 告警通过独立 Webhook 来源转发，不依赖画布页面打开，也不会修改 GTM 调度配置。后续可在通知模块扩展其他渠道和事件来源。
 
-1. 添加 Telegram 渠道：填写 BotFather 提供的 Bot Token、Chat ID，可选群组话题 ID。私聊先向机器人发送 `/start`；群组先加入机器人。保存后点击「测试发送」。编辑时 Token 留空保留原值，Token 加密保存，不会返回前端。
+1. 添加 Telegram 渠道：填写 BotFather 提供的 Bot Token、Chat ID，可选群组话题 ID。保存后先点击「验证机器人」确认 Token 有效及机器人用户名，再向这个机器人发送 `/start`（不是 BotFather）；本项目不处理机器人聊天指令，因此没有自动回复是正常的。Chat ID 填接收者或群组 ID，不是机器人用户名或 Token 开头数字；私聊请清空话题 ID。群组先加入机器人，再点击「测试发送」。401 表示 Token 认证失败，需要重新复制完整 Token 并保存，发送 `/start` 或更改 Chat ID 不能修复 401。编辑时 Token 留空保留原值，Token 加密保存，不会返回前端。
 2. 添加阿里云告警来源，选择通知渠道。打开「接入信息」，复制生成的回调地址。
 3. 在阿里云国际站的云监控告警联系人或自定义 Webhook 中配置该地址，选择 **POST + JSON 或 FORM**，再把联系人加入 GTM 使用的告警组，开启地址/地址池不可用及恢复通知。若控制台仅提供机器人通知，可使用钉钉文本或 Markdown 消息模板。本项目接收 CMS CloudEvents、经典表单和常见机器人消息结构；以国际站实际可配置的通知方式为准。接入说明见[云监控通知对象](https://www.alibabacloud.com/help/en/cms/cloudmonitor-2-0/notification-object/)和[GTM 告警设置](https://www.alibabacloud.com/help/en/dns/global-traffic-management-alarm-settings)。
 4. 在阿里云点击回调测试，回到本项目刷新「投递记录」，确认云端回调到达以及 Telegram 投递结果。
