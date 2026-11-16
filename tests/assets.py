@@ -22,6 +22,8 @@ try:
     app = get('?asset=app.js').read().decode()
     assert '"./index.php?asset=config-form.js&v=' in app
     assert '"./index.php?asset=ui.js&v=' in app
+    assert '"./index.php?asset=dns.js&v=' in app
+    assert 'export function dnsFullName' in get('?asset=dns.js').read().decode()
     form = get('?asset=config-form.js').read().decode()
     assert '"./index.php?asset=ui.js&v=' in form
     assert '"./ui.js"' not in form

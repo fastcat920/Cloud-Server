@@ -1,3 +1,4 @@
+import { dnsPrefix, dnsFullName } from "./dns.js";
 import { createGtm } from "./gtm.js";
 import {
   deleteParameter,
@@ -405,6 +406,36 @@ function accountsView() {
           .join("")}</div>`)
   );
 }
+function domainChoices(c, cf = false) {
+  const rows = [...(c.domainChoices || [])];
+  const value = cf ? c.zone : c.domain,
+    name = cf ? c.zoneName : c.domain;
+  if (value && !rows.some((row) => row.value === value))
+    rows.unshift({ value, label: name });
+  return rows;
+}
+async function loadDomainChoices(cf, accountId) {
+  const read = (page) =>
+    api(cf ? "cf.zones" : "dns.list", {
+      account_id: accountId,
+      page,
+      ...(cf ? {} : { domain: "" }),
+    });
+  const first = await read(1),
+    values = cf ? first.result || [] : first.Domains?.Domain || [];
+  const total = cf
+    ? first.result_info?.total_count || values.length
+    : first.TotalCount || values.length;
+  for (let page = 2; (page - 1) * 50 < total; page++) {
+    const next = await read(page);
+    values.push(...(cf ? next.result || [] : next.Domains?.Domain || []));
+  }
+  return values.map((row) => ({
+    value: cf ? row.id : row.DomainName,
+    label: cf ? row.name : row.DomainName,
+    plan: row.plan?.name || "",
+  }));
+}
 function resourceControls(type, extra = "") {
   const c = ctx(),
     options = accountOptions((a) =>
@@ -414,7 +445,7 @@ function resourceControls(type, extra = "") {
           ? a.provider === "aliyun"
           : a.provider !== "cloudflare",
     );
-  return `<form id="resource-form" class="resource-controls">${select("account_id", "云账号", options, c.account)}${["servers", "storage"].includes(type) ? field("region", "地域", c.region, "text", 'required placeholder="例如 cn-hangzhou"') : ""}${type === "servers" ? field("project", "UCloud 项目 ID（可选）", c.project || "") : ""}${type === "dns" ? field("domain", "域名（留空列出全部）", c.domain || "") : ""}${extra}<button type="submit" class="button primary">${icon("refresh")}查询</button></form>`;
+  return `<form id="resource-form" class="resource-controls">${select("account_id", "云账号", options, c.account)}${["servers", "storage"].includes(type) ? field("region", "地域", c.region, "text", 'required placeholder="例如 cn-hangzhou"') : ""}${type === "servers" ? field("project", "UCloud 项目 ID（可选）", c.project || "") : ""}${type === "dns" && domainChoices(c).length ? select("domain", "当前域名", domainChoices(c), c.domain || domainChoices(c)[0].value) : ""}${extra}<button type="submit" class="button primary">${icon("refresh")}查询</button></form>`;
 }
 function resourceError() {
   return ctx().error
@@ -542,8 +573,13 @@ function cfView() {
     ) +
     resourceControls(
       "cloudflare",
-      c.zone
-        ? `<div class="field"><label>当前域名</label><span>${e(c.zoneName)} ${button("返回域名", "zone.back", {}, "text")}</span></div>`
+      domainChoices(c, true).length
+        ? select(
+            "zone",
+            "当前域名",
+            domainChoices(c, true),
+            c.zone || domainChoices(c, true)[0].value,
+          )
         : "",
     ) +
     resourceError() +
@@ -763,6 +799,17 @@ async function queryResources() {
   c.error = "";
   try {
     let result;
+    if (
+      ["dns", "cloudflare"].includes(page) &&
+      (page === "dns" ? c.domain : c.zone) &&
+      (!c.domainChoicesComplete || c.domainChoicesAccount !== String(c.account))
+    ) {
+      const choices = await loadDomainChoices(page === "cloudflare", c.account);
+      if (c.serial !== serial) return;
+      c.domainChoices = choices;
+      c.domainChoicesComplete = true;
+      c.domainChoicesAccount = String(c.account);
+    }
     if (page === "servers") {
       result = await api("instances", {
         account_id: c.account,
@@ -806,6 +853,14 @@ async function queryResources() {
       c.items = c.domain
         ? result.DomainRecords?.Record || []
         : result.Domains?.Domain || [];
+      if (!c.domain) {
+        c.domainChoices = c.items.map((row) => ({
+          value: row.DomainName,
+          label: row.DomainName,
+        }));
+        c.domainChoicesComplete = c.items.length >= (result.TotalCount || 0);
+        c.domainChoicesAccount = String(c.account);
+      }
       c.ttlOptions = result.TtlOptions || [];
       c.total = result.TotalCount || c.items.length;
     } else if (page === "cloudflare") {
@@ -816,6 +871,16 @@ async function queryResources() {
       });
       if (c.serial !== serial) return;
       c.items = result.result || [];
+      if (!c.zone) {
+        c.domainChoices = c.items.map((row) => ({
+          value: row.id,
+          label: row.name,
+          plan: row.plan?.name || "",
+        }));
+        c.domainChoicesComplete =
+          c.items.length >= (result.result_info?.total_count || 0);
+        c.domainChoicesAccount = String(c.account);
+      }
       c.total = result.result_info?.total_count || c.items.length;
     } else if (page === "gtm") {
       if (c.tab === "history") {
@@ -939,6 +1004,9 @@ function editTarget(id) {
 function editDns(index, cf) {
   const c = ctx(),
     r = index !== undefined ? c.items[Number(index)] : null;
+  const target = { account: c.account, domain: c.domain, zone: c.zone };
+  const rootDomain = cf ? c.zoneName : c.domain;
+  const prefix = r ? (cf ? dnsPrefix(r.name, rootDomain) : r.RR) : "@";
   const types = ["A", "AAAA", "CNAME", "TXT", "MX", "NS", "SRV", "CAA"];
   const ttlOptions = [
     ...new Set([
@@ -986,7 +1054,7 @@ function editDns(index, cf) {
     cf
       ? "保存后将直接更新 Cloudflare 上的记录。"
       : "保存后将直接更新阿里云上的解析记录。",
-    `<div class="form-grid">${field("name", cf ? "完整域名" : "主机记录", r ? (cf ? r.name : r.RR) : cf ? c.zoneName : "@", "text", "required")}${select(
+    `<div class="form-grid">${field("name", "主机记录（前缀）", prefix, "text", 'required placeholder="@ 或 www"')}${field("root_domain", "根域名", rootDomain, "text", 'readonly aria-readonly="true"')}${select(
       "type",
       "记录类型",
       types.map((v) => ({ value: v, label: v })),
@@ -997,7 +1065,7 @@ function editDns(index, cf) {
         const extra = JSON.parse(String(data.get("advanced") || "{}"));
         const payload = {
           type: data.get("type"),
-          name: data.get("name"),
+          name: dnsFullName(data.get("name"), rootDomain),
           content: data.get("value"),
           ttl: Number(data.get("ttl")),
           proxied: data.has("proxied"),
@@ -1005,21 +1073,25 @@ function editDns(index, cf) {
         };
         if (["MX", "SRV"].includes(payload.type))
           payload.priority = Number(data.get("priority"));
+        payload.name = dnsFullName(data.get("name"), rootDomain);
         if (payload.proxied) payload.ttl = 1;
         if (payload.data) delete payload.content;
         await api("cf.save", {
-          account_id: c.account,
-          zone: c.zone,
+          account_id: target.account,
+          zone: target.zone,
           record: r?.id || "",
           payload,
         });
       } else
         await api("dns.save", {
-          account_id: c.account,
-          domain: c.domain,
+          account_id: target.account,
+          domain: target.domain,
           record: r?.RecordId || "",
           payload: {
-            RR: data.get("name"),
+            RR: dnsPrefix(
+              dnsFullName(data.get("name"), rootDomain),
+              rootDomain,
+            ),
             Type: data.get("type"),
             Value: data.get("value"),
             TTL: Number(data.get("ttl")),
@@ -1953,7 +2025,7 @@ document.addEventListener("click", async (event) => {
     node.disabled = false;
   }
 });
-document.addEventListener("change", (event) => {
+document.addEventListener("change", async (event) => {
   if (event.target.id === "plan-picker") {
     if (dirtyConfig() && !window.confirm("当前配置尚未保存，确定切换方案？")) {
       event.target.value = String(planId);
@@ -1976,6 +2048,11 @@ document.addEventListener("change", (event) => {
     c.bucket = "";
     c.zone = "";
     c.domain = "";
+    c.domainChoices = [];
+    c.domainChoicesComplete = false;
+    c.domainChoicesAccount = "";
+    c.zoneName = "";
+    c.zonePlan = "";
     c.region =
       route === "storage" && a?.provider === "ucloud"
         ? "cn-bj"
@@ -1984,6 +2061,30 @@ document.addEventListener("change", (event) => {
     if (region) region.value = c.region;
     const bucket = event.target.form.elements.bucket;
     if (bucket) bucket.value = "";
+    if (["dns", "cloudflare"].includes(route)) {
+      render();
+      await queryResources();
+    }
+  }
+  if (
+    event.target.closest("#resource-form") &&
+    ["domain", "zone"].includes(event.target.name) &&
+    ["dns", "cloudflare"].includes(route)
+  ) {
+    const c = ctx();
+    c.page = 1;
+    if (route === "dns") c.domain = event.target.value;
+    else {
+      const selected = c.domainChoices?.find(
+        (row) => row.value === event.target.value,
+      );
+      c.zone = event.target.value;
+      c.zoneName = selected?.label || "";
+      c.zonePlan = selected?.plan || "";
+    }
+    c.items = [];
+    render();
+    await queryResources();
   }
 });
 document.addEventListener("submit", async (event) => {
@@ -2026,6 +2127,14 @@ document.addEventListener("submit", async (event) => {
         c.history = [];
       }
       if (route === "dns") c.domain = data.domain || "";
+      if (route === "cloudflare" && data.zone) {
+        const selected = c.domainChoices?.find(
+          (row) => row.value === data.zone,
+        );
+        c.zone = data.zone;
+        c.zoneName = selected?.label || c.zoneName;
+        c.zonePlan = selected?.plan || "";
+      }
       await queryResources();
     } else if (formId === "prefix-form") {
       Object.assign(ctx(), { prefix: data.prefix, marker: "", history: [] });

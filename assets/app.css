@@ -2190,3 +2190,8 @@ body:has(.record-drawer[open]) {
     padding-bottom: max(16px, env(safe-area-inset-bottom));
   }
 }
+
+.record-drawer input[name="root_domain"] {
+  background: var(--bg);
+  color: var(--muted);
+}
