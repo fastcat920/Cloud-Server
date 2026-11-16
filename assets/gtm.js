@@ -402,6 +402,9 @@ export function initial(fields, resource, create) {
   const defaults = {
     Remark: "",
     EnableStatus: create ? "disable" : "enable",
+    AvailableMode: "auto",
+    HealthJudgement: "any_ok",
+    ManualAvailableStatus: "available",
     ScheduleZoneMode: "custom",
     ChargeType: "prepay",
     Ttl: 60,
@@ -420,7 +423,18 @@ export function initial(fields, resource, create) {
   };
   const value = {};
   for (const [key, spec] of Object.entries(fields)) {
-    if (Object.hasOwn(resource, key)) value[key] = project(resource[key], spec);
+    if (
+      Object.hasOwn(defaults, key) &&
+      ["AvailableMode", "HealthJudgement", "ManualAvailableStatus"].includes(
+        key,
+      ) &&
+      (resource[key] === undefined ||
+        resource[key] === null ||
+        resource[key] === "")
+    )
+      value[key] = spec.enum?.[0] ?? defaults[key];
+    else if (Object.hasOwn(resource, key))
+      value[key] = project(resource[key], spec);
     else if (Object.hasOwn(defaults, key)) value[key] = defaults[key];
     else if (spec.type === "array") value[key] = [];
     else if (spec.required) value[key] = spec.type === "integer" ? 1 : "";
@@ -1145,7 +1159,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
         name,
         spec.label,
         [
-          ...(explicit
+          ...(explicit && !valid
             ? [
                 {
                   value: "",
@@ -1160,7 +1174,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
                   disabled: true,
                 },
               ]
-            : spec.required
+            : explicit || spec.required
               ? []
               : [{ value: "", label: "未设置" }]),
           ...opts,
@@ -1990,17 +2004,37 @@ export function createGtm({ api, ctx, render, queryResources }) {
         },
         monitors: { basic: "UpdateCloudGtmMonitorTemplate" },
       })[type][mode];
-    const card = (type, row, parentStrategy) => {
+    const card = (type, row) => {
       const selected =
         editor?.spec.kind === type &&
         editor.resource[ids[type]] === row[ids[type]];
-      return `<article role="button" tabindex="0" aria-label="编辑 ${e(gtmName(row))}" data-action="gtm.edit" data-kind="${type}" data-id="${e(row[ids[type]])}" data-operation="${opFor(type, "basic")}" class="gtm-node gtm-node-${type} gtm-state-${gtmStatus(row)} ${selected ? "selected" : ""}"><div class="gtm-node-title"><span class="gtm-node-name">${e(gtmName(row))}</span><span class="gtm-kind">${e(kinds[type])}</span></div><div class="gtm-node-meta">${stateBadge(row)}${row.Ttl ? `<span>TTL ${e(row.Ttl)}s</span>` : ""}</div>${row.Address ? `<div class="gtm-node-address mono">${e(row.Address)}</div>` : ""}<div class="gtm-node-meta gtm-node-policy">${["sequence", "source_nearest"].includes(parentStrategy) && row.SerialNumber !== undefined ? `<span>序 ${e(row.SerialNumber)}</span>` : ""}${parentStrategy === "weight" && row.WeightValue !== undefined ? `<span>权重 ${e(row.WeightValue)}</span>` : ""}${enums[row.AddressPoolLbStrategy || row.AddressLbStrategy] ? `<span>${e(enums[row.AddressPoolLbStrategy || row.AddressLbStrategy])}</span>` : ""}</div>${type === "addresses" && row.HealthTasks?.length ? `<div class="gtm-monitor-chips">${row.HealthTasks.map((task) => `<span data-gtm-template="${e(task.TemplateId)}" data-port="${e(task.Port ?? "")}">${e(task.TemplateName || displayName(knownResources().get(task.TemplateId)))}${task.Port !== undefined ? ":" + e(task.Port) : ""}</span>`).join("")}</div>` : ""}</article>`;
+      return `<article role="button" tabindex="0" aria-label="编辑 ${e(gtmName(row))}" data-action="gtm.edit" data-kind="${type}" data-id="${e(row[ids[type]])}" data-operation="${opFor(type, "basic")}" class="gtm-node gtm-node-${type} gtm-state-${gtmStatus(row)} ${selected ? "selected" : ""}"><div class="gtm-node-title"><span class="gtm-node-name">${e(gtmName(row))}</span><span class="gtm-kind">${e(kinds[type])}</span></div><div class="gtm-node-meta">${stateBadge(row)}${row.Ttl ? `<span>TTL ${e(row.Ttl)}s</span>` : ""}</div>${row.Address ? `<div class="gtm-node-address mono">${e(row.Address)}</div>` : ""}${type === "addresses" && row.HealthTasks?.length ? `<div class="gtm-monitor-chips">${row.HealthTasks.map((task) => `<span data-gtm-template="${e(task.TemplateId)}" data-port="${e(task.Port ?? "")}">${e(task.TemplateName || displayName(knownResources().get(task.TemplateId)))}${task.Port !== undefined ? ":" + e(task.Port) : ""}</span>`).join("")}</div>` : ""}</article>`;
     };
-    const branch = (pool) =>
-      `<section class="gtm-lane"><div class="gtm-pool-column">${card("pools", pool, resource.AddressPoolLbStrategy)}</div><div class="gtm-address-grid gtm-tree-addresses">${(pool.Addresses || []).map((address) => `<div class="gtm-address-leaf">${card("addresses", address, pool.AddressLbStrategy)}</div>`).join("") || '<span class="help">暂无地址，点击地址池，在编辑区添加。</span>'}</div></section>`;
+    const incoming = (row, strategy) => {
+      const text =
+        strategy === "weight" && row.WeightValue !== undefined
+          ? `权重：${row.WeightValue}`
+          : ["sequence", "source_nearest"].includes(strategy) &&
+              row.SerialNumber !== undefined
+            ? `顺序号：${row.SerialNumber}`
+            : "";
+      return text
+        ? `<span class="gtm-edge-label gtm-edge-incoming">${e(text)}</span>`
+        : "";
+    };
+    const outgoing = (row, hasChildren) => {
+      const strategy = row.AddressPoolLbStrategy || row.AddressLbStrategy;
+      return hasChildren && enums[strategy]
+        ? `<span class="gtm-edge-label gtm-edge-policy" title="${e([enums[strategy], enums[row.SequenceLbStrategyMode]].filter(Boolean).join(" · "))}">${e(strategy === "sequence" ? "顺序（主备）" : enums[strategy])}</span>`
+        : "";
+    };
+    const branch = (pool) => {
+      const children = pool.Addresses || [];
+      return `<section class="gtm-lane gtm-edge-${gtmStatus(pool)}">${kind === "list" ? incoming(pool, resource.AddressPoolLbStrategy) : ""}<div class="gtm-pool-column ${children.length ? "" : "gtm-no-children"}">${card("pools", pool)}${outgoing(pool, children.length)}</div><div class="gtm-address-grid gtm-tree-addresses">${children.map((address) => `<div class="gtm-address-leaf gtm-edge-${gtmStatus(address)}">${incoming(address, pool.AddressLbStrategy)}${card("addresses", address)}</div>`).join("") || '<span class="help">暂无地址，点击地址池，在编辑区添加。</span>'}</div></section>`;
+    };
     let graph;
     if (kind === "list")
-      graph = `<div class="gtm-domain-column">${card("list", resource)}</div><div class="gtm-lanes">${(resource.AddressPools || []).map(branch).join("") || '<p class="help">暂无地址池，点击接入域名，在编辑区添加。</p>'}</div>`;
+      graph = `<div class="gtm-domain-column gtm-edge-${gtmStatus(resource)} ${(resource.AddressPools || []).length ? "" : "gtm-no-children"}">${card("list", resource)}${outgoing(resource, resource.AddressPools?.length)}</div><div class="gtm-lanes">${(resource.AddressPools || []).map(branch).join("") || '<p class="help">暂无地址池，点击接入域名，在编辑区添加。</p>'}</div>`;
     else if (kind === "pools") graph = branch(resource);
     else if (kind === "addresses")
       graph = `<div class="gtm-address-grid">${card("addresses", resource)}</div>`;

@@ -1640,11 +1640,17 @@ dialog::backdrop {
 /* Top-down tree: domain -> pools -> addresses. */
 :root {
   --gtm-connector: #a7bbb8;
+  --gtm-good: #16a34a;
+  --gtm-good-soft: #f0fdf4;
+  --gtm-warn: #d4a000;
+  --gtm-warn-soft: #fffbeb;
+  --gtm-bad: #e5484d;
+  --gtm-bad-soft: #fff1f2;
 }
 .gtm-graph-list {
   flex-direction: column;
   align-items: center;
-  gap: 24px;
+  gap: 56px;
   width: max-content;
   min-width: 100%;
 }
@@ -1656,7 +1662,7 @@ dialog::backdrop {
 .gtm-graph-list .gtm-domain-column::after {
   content: "";
   position: absolute;
-  height: 24px;
+  height: 56px;
   border-left: 1px solid var(--gtm-connector);
   left: 50%;
   top: 100%;
@@ -1674,8 +1680,8 @@ dialog::backdrop {
   flex: 1 0 auto;
   flex-direction: column;
   align-items: center;
-  gap: 24px;
-  padding: 22px 0 0;
+  gap: 56px;
+  padding: 56px 0 0;
   width: max-content;
   min-width: 200px;
 }
@@ -1700,7 +1706,7 @@ dialog::backdrop {
   position: absolute;
   top: 0;
   left: 50%;
-  height: 22px;
+  height: 56px;
   border-left: 1px solid var(--gtm-connector);
 }
 .gtm-graph-pools .gtm-lane {
@@ -1717,7 +1723,7 @@ dialog::backdrop {
   top: 100%;
   left: 50%;
   right: auto;
-  height: 24px;
+  height: 56px;
   width: auto;
   border: 0;
   border-left: 1px solid var(--gtm-connector);
@@ -1734,7 +1740,7 @@ dialog::backdrop {
   position: relative;
   flex: 0 0 184px;
   width: 184px;
-  padding-top: 18px;
+  padding-top: 56px;
 }
 .gtm-address-leaf::before {
   content: "";
@@ -1757,7 +1763,7 @@ dialog::backdrop {
   content: "";
   position: absolute;
   top: 0;
-  height: 18px;
+  height: 56px;
   left: 50%;
   border-left: 1px solid var(--gtm-connector);
 }
@@ -1783,24 +1789,83 @@ dialog::backdrop {
   outline-offset: 3px;
 }
 .gtm-node.gtm-state-bad {
-  background: #fff1f0;
-  border-left-color: #bd4a4a;
+  background: var(--gtm-bad-soft);
+  border-color: var(--gtm-bad);
 }
 .gtm-node.gtm-state-warn {
-  background: #fff6e9;
-  border-left-color: #c17a24;
+  background: var(--gtm-warn-soft);
+  border-color: var(--gtm-warn);
 }
 .gtm-node.gtm-state-good {
-  background: #eff9f2;
-  border-left-color: #398855;
+  background: var(--gtm-good-soft);
+  border-color: var(--gtm-good);
 }
 .gtm-node.gtm-state-unknown {
   background: var(--surface);
 }
-.gtm-node-meta.gtm-node-policy {
-  column-gap: 18px;
-  row-gap: 6px;
-  margin-top: 10px;
+.gtm-edge-good {
+  --gtm-connector: var(--gtm-good);
+}
+.gtm-edge-warn {
+  --gtm-connector: var(--gtm-warn);
+}
+.gtm-edge-bad {
+  --gtm-connector: var(--gtm-bad);
+}
+.gtm-edge-unknown {
+  --gtm-connector: #a7bbb8;
+}
+.gtm-edge-label {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  padding: 1px 6px;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.gtm-edge-policy {
+  top: calc(100% + 17px);
+}
+.gtm-edge-incoming {
+  top: 17px;
+}
+.gtm-graph .gtm-no-children::after {
+  display: none;
+}
+.gtm-node {
+  position: relative;
+}
+.gtm-lane > .gtm-pool-column::before,
+.gtm-address-leaf > .gtm-node::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: calc(50% - 4px);
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 7px solid var(--gtm-connector);
+}
+.gtm-graph-pools .gtm-pool-column::before {
+  display: none;
+}
+.gtm-state-good .tag {
+  color: #166534;
+  background: var(--gtm-good-soft);
+  border-color: #86d9a3;
+}
+.gtm-state-warn .tag {
+  color: #805c00;
+  background: var(--gtm-warn-soft);
+  border-color: #e8ca63;
+}
+.gtm-state-bad .tag {
+  color: #a61b27;
+  background: var(--gtm-bad-soft);
+  border-color: #f4a2a7;
 }
 
 .gtm-line-tags,

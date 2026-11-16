@@ -149,8 +149,8 @@ const explicitFields = {
   HealthJudgement: { type: "string" },
   ManualAvailableStatus: { type: "string" },
 };
-assert.deepEqual(initial(explicitFields, {}, true), { AvailableMode: "" });
-assert.deepEqual(initial(explicitFields, {}, false), { AvailableMode: "" });
+assert.deepEqual(initial(explicitFields, {}, true), { AvailableMode: "auto", HealthJudgement: "any_ok", ManualAvailableStatus: "available" });
+assert.deepEqual(initial(explicitFields, {}, false), { AvailableMode: "auto", HealthJudgement: "any_ok", ManualAvailableStatus: "available" });
 assert.deepEqual(
   initial(
     explicitFields,
@@ -167,3 +167,5 @@ assert.deepEqual(
     ManualAvailableStatus: "unavailable",
   },
 );
+
+assert.equal(initial(explicitFields, {AvailableMode: null, HealthJudgement: ""}, false).HealthJudgement, "any_ok");
