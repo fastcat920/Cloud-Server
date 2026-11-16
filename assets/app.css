@@ -1968,3 +1968,13 @@ body:has(.gtm-drawer[open]) {
   flex-direction: column;
   gap: 3px;
 }
+
+.dialog-error details {
+  color: var(--muted);
+  margin-top: 8px;
+}
+.dialog-error dd {
+  margin: 4px 0 10px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}

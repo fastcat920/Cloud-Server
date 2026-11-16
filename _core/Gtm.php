@@ -3,6 +3,10 @@
 declare(strict_types=1);
 namespace CloudDesk;
 
+final class GtmRequestError extends \RuntimeException
+{
+    public function __construct(string $message, public readonly array $details, \Throwable $previous) { parent::__construct($message,0,$previous); }
+}
 final class Gtm
 {
     private const KINDS = [
@@ -45,11 +49,42 @@ final class Gtm
                 try { return $this->cloud->rpc($account,$operation,['AcceptLanguage'=>'zh-CN']+$params,service:'alidns',method:$read?'GET':'POST',timeout:$read?15:60,reuse:true); }
                 finally { $this->cloudMs+=(hrtime(true)-$started)/1000000; }
             } catch (\RuntimeException $error) {
-                if ($read && $attempt===0 && (str_contains($error->getMessage(),'28') || preg_match('/HTTP 50[234]/',$error->getMessage()))) continue;
-                throw new \RuntimeException('GTM '.$operation.'：'.$error->getMessage(),0,$error);
+                $transient=$error instanceof CloudResponseError ? in_array($error->httpStatus,[502,503,504],true) : preg_match('/[（(]28[）)]|HTTP 50[234]/',$error->getMessage())===1;
+                if ($read && $attempt===0 && $transient) continue;
+                throw self::requestError($operation,$error);
             }
         }
         throw new \RuntimeException('GTM 读取失败');
+    }
+    public static function requestError(string $operation, \RuntimeException $error): GtmRequestError
+    {
+        $code=$error instanceof CloudResponseError?$error->providerCode:'';
+        $request=$error instanceof CloudResponseError?$error->requestId:'';
+        $status=$error instanceof CloudResponseError?$error->httpStatus:0;
+        $raw=$error->getMessage();
+        $displayRaw=$code!=='' && str_starts_with($raw,$code.'：')?substr($raw,strlen($code.'：')):$raw;
+        $reason=match(true) {
+            str_contains($code,'HealthJudgement')=>'健康判定条件缺失或不正确，请重新选择健康判定条件。',
+            str_contains($code,'DispatchTypeNotMatchMonitorTemplate')=>'地址类型与探测模板不匹配，请选择相同 IP 版本的模板。',
+            str_contains($code,'InnerIpCanNotHasMonitorTask')=>'内网地址不支持配置健康探测任务。',
+            str_contains($code,'MonitorTaskQuota')=>'健康探测任务数量超过当前套餐限制。',
+            str_contains($code,'ReferenceStandardInstanceUseUltimateQuota')=>'探测模板配置超出关联实例的套餐能力，请检查探测间隔和探测节点。',
+            str_contains($code,'NameConflict') || str_contains($code,'NameDuplicate')=>'资源名称已被使用，请更换名称。',
+            str_contains($code,'ValueFormat') || str_contains($code,'ValueIpv4') || str_contains($code,'ValueIpv6') || str_contains($code,'ValueDomain')=>'服务地址格式不正确，请检查 IP 地址或域名。',
+            str_contains($code,'Port')=>'探测端口不正确；Ping 不填写端口，TCP、HTTP、HTTPS 需要有效端口。',
+            preg_match('/(Forbidden|Unauthorized|AccessDenied|InvalidAccessKey|SignatureDoesNotMatch)/i',$code)===1 || $status===403 || $status===401=>'云账号认证或授权失败，请检查凭证与 RAM 权限。',
+            preg_match('/(NotExist|NotExsit|NotFound)/i',$code)===1=>'资源不存在或已被删除，请刷新后重新选择。',
+            str_contains($code,'Quota') || str_contains($code,'ExceedMax')=>'配置超过当前账号或套餐的资源限制。',
+            preg_match('/[\x{4e00}-\x{9fff}]/u',$displayRaw)===1=>$displayRaw,
+            $status>=500=>'阿里云服务暂时异常，请稍后重试；若已提交变更，请先刷新核对结果。',
+            $status===400 || preg_match('/params? error|invalid.*param|missing.*param/i',$raw)===1=>'阿里云拒绝了请求参数，请核对配置。可展开技术详情查看错误码和请求编号。',
+            default=>'阿里云请求失败，请查看技术详情；若正在保存，请先刷新核对云端结果。',
+        };
+        $spec=self::catalog()[$operation] ?? null;
+        $kind=['list'=>'接入域名','pools'=>'地址池','addresses'=>'地址','monitors'=>'探测模板'][$spec['kind'] ?? ''] ?? 'GTM 资源';
+        $label=$spec ? $kind.'「'.$spec['label'].'」操作失败' : '读取 GTM 资源失败';
+        $original=preg_match('/^.{0,4000}/us',$raw,$limited)===1?$limited[0]:'原始错误无法解码';
+        return new GtmRequestError($label.'：'.$reason,['operation'=>$operation,'code'=>$code,'request_id'=>$request,'http_status'=>$status ?: null,'original_message'=>$original],$error);
     }
     public function listing(array $account,string $kind,int $page=1,array $filters=[]): array
     {
@@ -196,6 +231,10 @@ final class Gtm
             $before=$detail['resource'];$references=$this->references($account,$kind,$id);
             if ($spec['delete'] && $references) throw new ApiError('资源仍被引用，请先在上级配置中解除关联',409);
         }
+        if ($kind==='addresses' && !empty($params['HealthTasks']) && !isset($params['HealthJudgement'])) {
+            $params['HealthJudgement']=$before['HealthJudgement'] ?? 'any_ok';
+            if (!in_array($params['HealthJudgement'],$spec['fields']['HealthJudgement']['enum'],true)) throw new ApiError('请明确选择健康判定条件');
+        }
         if ($kind==='monitors' && isset($params['IspCityNodes']) && !$params['IspCityNodes']) throw new ApiError('请至少选择一个探测节点');
         $this->relationships($account,$spec,$params,$before);
         if (isset($params['ExtendInfo'])) {
@@ -250,7 +289,7 @@ final class Gtm
             try { $result=$this->apply($account,$encrypted,$lock); }
             catch (\Throwable $error) {
                 if (!$results) throw $error;
-                return $previous+['steps'=>$results,'partial'=>true,'error'=>$error->getMessage()];
+                return $previous+['steps'=>$results,'partial'=>true,'error'=>$error->getMessage()]+($error instanceof GtmRequestError?['error_details'=>$error->details]:[]);
             }
             $results[]=$result;$previous=$result;
             if ($result['verification']!=='confirmed') return $result+['steps'=>$results,'partial'=>count($results)<count($tickets)];
@@ -308,6 +347,7 @@ final class Gtm
             if (isset($ticket['batch'])) return $this->applyBatch($account,$ticket['batch'],$lock);
             foreach ($this->store->read()['gtm_changes'] ?? [] as $change) if ($change['nonce']===$ticket['nonce'] && $change['status']==='success') return $change['result'];
             $operation=$ticket['operation'];$spec=self::catalog()[$operation];$params=$ticket['parameters'];$kind=$spec['kind'];$idField=self::KINDS[$kind][4];$id=$params[$idField] ?? '';
+            if ($kind==='addresses' && !empty($params['HealthTasks']) && !isset($params['HealthJudgement'])) throw new ApiError('此预览缺少健康判定条件，请返回编辑重新预览',409);
             if (!$spec['create']) {
                 $current=$this->detail($account,$kind,$id,$params['InstanceId'] ?? $ticket['before']['InstanceId'] ?? '');
                 if (!hash_equals($ticket['token'],$current['token'])) throw new ApiError('云端配置已变化，本次未提交。请重新编辑',409);
@@ -331,7 +371,7 @@ final class Gtm
                 $change['status']='success';$change['result']=$result;$this->record($change);
                 return $result;
             } catch (\Throwable $error) {
-                $change['status']='failed';$change['error']=$error instanceof \RuntimeException?$error->getMessage():'GTM 操作失败';$this->record($change);throw $error;
+                $change['status']='failed';$change['error']=$error instanceof \RuntimeException?$error->getMessage():'GTM 操作失败';if ($error instanceof GtmRequestError) $change['error_details']=$error->details;$this->record($change);throw $error;
             }
         } finally { if ($heldLock===null) fclose($lock); }
     }

@@ -10,6 +10,7 @@ import {
   empty,
   modal,
   toast,
+  errorDetails,
 } from "./ui.js";
 export const kinds = {
   list: "接入域名",
@@ -262,6 +263,67 @@ export function gtmProbeNodes(data, ip = "IPv4") {
   }
   return [...unique.values()];
 }
+const gtmLabels = {
+  Address: "服务地址",
+  Name: "名称",
+  HealthTasks: "关联探测模板",
+  HealthJudgement: "健康判定条件",
+  Port: "探测端口",
+  TemplateId: "探测模板",
+  AddressPools: "关联地址池",
+  Addresses: "关联地址",
+  AddressPoolId: "地址池",
+  AddressId: "地址",
+  ConfigId: "接入域名配置",
+  InstanceId: "GTM 实例",
+  IspCityNodes: "探测节点",
+  CityCode: "城市",
+  IspCode: "运营商",
+  WeightValue: "权重",
+  SerialNumber: "优先顺序",
+  RequestSource: "请求来源线路",
+  EnableStatus: "启用状态",
+  AvailableMode: "故障切换模式",
+  ManualAvailableStatus: "人工可用状态",
+  Remark: "备注",
+  Ttl: "TTL（秒）",
+  AddressPoolName: "地址池名称",
+  AddressPoolType: "地址池类型",
+  Type: "地址类型",
+  AddressPoolLbStrategy: "地址池间调度策略",
+  AddressLbStrategy: "地址间调度策略",
+  SequenceLbStrategyMode: "主备恢复模式",
+  ScheduleZoneName: "接入域名",
+  ScheduleHostname: "主机记录",
+  ScheduleRrType: "记录类型",
+  ScheduleZoneMode: "域名托管模式",
+  ChargeType: "计费方式",
+  IpVersion: "IP 版本",
+  Protocol: "探测协议",
+  Interval: "探测间隔",
+  Timeout: "超时",
+  EvaluationCount: "连续失败次数",
+  FailureRate: "失败节点比例",
+  ExtendInfo: "协议参数",
+  path: "探测路径",
+  host: "HTTP 主机名",
+  code: "异常状态码阈值",
+  sni: "启用 SNI",
+  followRedirect: "跟随重定向",
+  packetNum: "Ping 数据包数",
+  packetLossRate: "丢包阈值",
+};
+export function gtmFieldPath(path, fields = {}, resolve = () => "关联项") {
+  return path.replace(
+    /\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*)|(\.)/g,
+    (_, id, key, dot) =>
+      id !== undefined
+        ? " / " + resolve(id)
+        : dot
+          ? " / "
+          : fields[key]?.label || gtmLabels[key] || key,
+  );
+}
 export function gtmUpdateParameters(fields, before, parameters) {
   const identities = new Set([
     "ConfigId",
@@ -299,6 +361,12 @@ export function gtmUpdateParameters(fields, before, parameters) {
     Object.hasOwn(parameters, "SequenceLbStrategyMode")
   )
     patch.SequenceLbStrategyMode = parameters.SequenceLbStrategyMode;
+  if (
+    patch.HealthTasks?.length &&
+    fields.HealthJudgement &&
+    parameters.HealthJudgement
+  )
+    patch.HealthJudgement = parameters.HealthJudgement;
   return patch;
 }
 export function gtmStatus(row) {
@@ -1350,7 +1418,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
           table(
             ["参数", "原值", "提交值"],
             changes.map((change) => [
-              e(change.path),
+              e(displayChangePath(change.path, savedEditor.spec.fields)),
               formatValue(change.before),
               formatValue(change.after),
             ]),
@@ -1478,7 +1546,8 @@ export function createGtm({ api, ctx, render, queryResources }) {
       try {
         await onSubmit(new FormData(form), form);
       } catch (error) {
-        form.querySelector(".dialog-error").textContent = error.message;
+        form.querySelector(".dialog-error").innerHTML =
+          e(error.message) + errorDetails(error.details);
       } finally {
         btn.disabled = false;
       }
@@ -1653,16 +1722,51 @@ export function createGtm({ api, ctx, render, queryResources }) {
       restoreListPosition(editor?.returnTo || opening?.returnTo, false);
     }
   }
-  function formatValue(value) {
+  function displayChangePath(path, fields) {
+    return gtmFieldPath(path, fields, (id) => {
+      const plain = id.split(":")[0],
+        row = knownResources().get(id) || knownResources().get(plain);
+      if (row) return displayName(row);
+      if (id.includes("/")) {
+        const node =
+          editor &&
+          currentProbeNodes().find(
+            (node) => node.CityCode + "/" + node.IspCode === id,
+          );
+        if (node) return [node.CityName, node.IspName].join(" / ");
+      }
+      return "关联项";
+    });
+  }
+  function formatValue(value, key = "") {
     if (value === undefined) return '<span class="help">未设置</span>';
+    if (value === null) return '<span class="help">空值</span>';
     if (Array.isArray(value))
       return value.length
-        ? `<div class="gtm-preview-values">${value.map(formatValue).join("")}</div>`
+        ? `<div class="gtm-preview-values">${value.map((item) => formatValue(item)).join("")}</div>`
         : '<span class="help">空列表（解除引用）</span>';
     if (value && typeof value === "object")
       return `<dl class="gtm-values">${Object.entries(value)
-        .map(([key, v]) => `<dt>${e(key)}</dt><dd>${formatValue(v)}</dd>`)
+        .map(
+          ([key, v]) =>
+            `<dt>${e(gtmLabels[key] || key)}</dt><dd>${formatValue(v, key)}</dd>`,
+        )
         .join("")}</dl>`;
+    if (
+      [
+        "TemplateId",
+        "AddressId",
+        "AddressPoolId",
+        "ConfigId",
+        "InstanceId",
+      ].includes(key)
+    )
+      return e(
+        knownResources().has(value)
+          ? displayName(knownResources().get(value))
+          : "所选" + gtmLabels[key],
+      );
+    if (typeof value === "boolean") return value ? "是" : "否";
     return e(enums[value] || String(value));
   }
   function mayDiscard() {
@@ -2033,11 +2137,11 @@ export function createGtm({ api, ctx, render, queryResources }) {
         table(
           ["字段", "变更前", "提交值"],
           changes.map((item) => [
-            e(item.path),
+            e(displayChangePath(item.path, spec?.fields)),
             formatValue(item.before),
             formatValue(item.after),
           ]),
-        ),
+        ) + errorDetails(change.error_details),
         async () => {},
         "关闭",
       );

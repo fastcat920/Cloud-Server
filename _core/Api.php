@@ -195,16 +195,18 @@ final class Api
             $this->respond(null, $e->status, $e->getMessage());
         } catch (\JsonException $e) {
             $this->respond(null, 422, 'JSON 格式错误，请检查后重试');
+        } catch (GtmRequestError $e) {
+            $this->respond(null,422,$e->getMessage(),$e->details);
         } catch (\Throwable $e) {
             $this->respond(null, 422, $e instanceof \RuntimeException ? $e->getMessage() : '操作失败，请检查输入与服务器运行环境');
         }
     }
-    private function respond(mixed $data, int $status = 200, string $error = ''): never
+    private function respond(mixed $data, int $status = 200, string $error = '', ?array $details = null): never
     {
         http_response_code($status);
         header('Content-Type: application/json; charset=utf-8');
         header('Cache-Control: no-store');
-        echo json_encode(['data' => $data,'error' => $error], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        echo json_encode(['data' => $data,'error' => $error]+($details===null?[]:['error_details'=>$details]), JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
         exit;
     }
     private function dispatch(string $action): mixed

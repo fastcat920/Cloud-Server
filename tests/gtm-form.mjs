@@ -132,3 +132,14 @@ assert.equal(gtmProbeKey({CityCode:'2',IspCode:'3'}),gtmProbeKey(gtmProbeNodes(p
 assert.equal(probeCatalog.Ipv4IspCityNodes.Ipv4IspCityNode.length,3,'Catalog input must stay immutable');
 assert.deepEqual(gtmProbeNodes(undefined),[]);
 console.log('PASS: probe node identity, IP-family isolation, duplicate elimination and immutable catalogs');
+
+const { gtmFieldPath } = await import('../assets/gtm.js');
+assert.equal(gtmFieldPath('Address'),'服务地址');
+assert.equal(gtmFieldPath('HealthTasks[mtp-123].Port',{},()=> 'HTTPS 检查'),'关联探测模板 / HTTPS 检查 / 探测端口');
+assert.equal(gtmFieldPath('AddressPools[pool-1]（新增）',{},()=> 'example.com'),'关联地址池 / example.com（新增）');
+assert.deepEqual(gtmUpdateParameters({AddressId:{type:'string',required:true},HealthTasks:editFields.HealthTasks,HealthJudgement:{type:'string'}},{AddressId:'a',HealthTasks:[],HealthJudgement:'any_ok'},{AddressId:'a',HealthTasks:[{TemplateId:'t',Port:30001}],HealthJudgement:'any_ok'}),{AddressId:'a',HealthTasks:[{TemplateId:'t',Port:30001}],HealthJudgement:'any_ok'});
+const {errorDetails}=await import('../assets/ui.js');
+assert(errorDetails({original_message:'<img src=x onerror=alert(1)>'}).includes('&lt;img'));
+assert(!errorDetails({original_message:'<img src=x>'}).includes('<img'));
+assert(!errorDetails({code:'InvalidParameter'}).includes('<details open'));
+console.log('PASS: health-check dependent fields, Chinese preview paths and escaped collapsed diagnostics');

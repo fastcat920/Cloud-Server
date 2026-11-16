@@ -179,7 +179,9 @@ async function api(action, data = {}, options = {}) {
         boot.authenticated = false;
         auth();
       }
-      throw new Error(body.error || "请求失败");
+      const error = new Error(body.error || "请求失败");
+      error.details = body.error_details;
+      throw error;
     }
     return body.data;
   } finally {

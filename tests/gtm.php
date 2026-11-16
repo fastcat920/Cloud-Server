@@ -59,7 +59,7 @@ try {
  try{$gtm->previewBatch($account,[['operation'=>'DeleteCloudGtmAddress','parameters'=>['AddressId'=>'addr-1']]],$d['token']);throw new LogicException('Batch delete accepted');}catch(ApiError){}
  $batch=$gtm->previewBatch($account,[['operation'=>'UpdateCloudGtmAddressRemark','parameters'=>['AddressId'=>'addr-1','Remark'=>'partial remark']],['operation'=>'UpdateCloudGtmAddressEnableStatus','parameters'=>['AddressId'=>'addr-1','EnableStatus'=>'enable']]],$d['token']);
  Http::$transport=function($method,$url,$headers,$body)use($originalTransport){parse_str($body??'',$q);if(($q['Action']??'')==='UpdateCloudGtmAddressEnableStatus')throw new RuntimeException('simulated write failure');return $originalTransport($method,$url,$headers,$body);};
- $partial=$gtm->apply($account,$batch['ticket']);verifyGtm($partial['partial'] && count($partial['steps'])===1 && str_contains($partial['error'],'simulated'),'Partial failure must stop and report completed steps');Http::$transport=$originalTransport;
+ $partial=$gtm->apply($account,$batch['ticket']);verifyGtm($partial['partial'] && count($partial['steps'])===1 && str_contains($partial['error_details']['original_message'] ?? '', 'simulated'),'Partial failure must stop and report completed steps');Http::$transport=$originalTransport;
  $calls=function()use($directory){$state=json_decode(substr(file_get_contents($directory.'/gtm-fixture.php'),strlen(Store::GUARD)),true);return $state['calls'];};
  $start=count($calls());$freshGtm=new Gtm($cloud,$store,$security);$freshGtm->detail($account,'list','config-1','gtm-1');
  $actual=array_column(array_slice($calls(),$start),'Action');verifyGtm($actual===['DescribeCloudGtmInstanceConfigFullInfo'],'Canvas detail with known instance must avoid extra list queries');
@@ -75,6 +75,16 @@ try {
  $raw=json_decode(substr(file_get_contents($directory.'/gtm-fixture.php'),strlen(Store::GUARD)),true);$raw['addresses']['addr-1']['Name']='externally changed after preview';file_put_contents($directory.'/gtm-fixture.php',Store::GUARD.json_encode($raw));
  try{$gtm->apply($account,$fast['ticket']);throw new LogicException('Coalesced preview bypassed apply conflict check');}catch(ApiError $e){verifyGtm($e->status===409,'Fresh conflict check still required at apply');}
  $metrics=$gtm->metrics();verifyGtm($metrics['cloud_calls']>0 && $metrics['cloud_ms']>=0,'Safe timing metadata');
+ $d=$gtm->detail($account,'addresses','addr-1');
+ $paired=$gtm->preview($account,'UpdateCloudGtmAddress',['AddressId'=>'addr-1','Address'=>'130.12.18.223','HealthTasks'=>[['TemplateId'=>'mtp-1','Port'=>30001]]],$d['token']);
+ verifyGtm($paired['parameters']['HealthJudgement']===$d['resource']['HealthJudgement'],'Health task changes must freeze the preserved health judgement into preview');
+ Http::$transport=function($method,$url,$headers,$body)use($originalTransport){parse_str($body??'',$q);if(($q['Action']??'')==='UpdateCloudGtmAddress' && !empty(json_decode($q['HealthTasks']??'[]',true)) && empty($q['HealthJudgement']))return ['status'=>400,'body'=>json_encode(['Code'=>'CloudGtm.Address.HealthJudgementInvalid','Message'=>'params error.','RequestId'=>'request-health-required'])];return $originalTransport($method,$url,$headers,$body);};
+ verifyGtm($gtm->apply($account,$paired['ticket'])['verification']==='confirmed','Address and new health checks must save together with their dependent condition');
+ Http::$transport=$originalTransport;$d=$gtm->detail($account,'addresses','addr-1');$failed=$gtm->preview($account,'UpdateCloudGtmAddress',['AddressId'=>'addr-1','Name'=>'rejected'],$d['token']);$rejectedWrites=0;
+ Http::$transport=function($method,$url,$headers,$body)use($originalTransport,&$rejectedWrites){if($method==='POST'){++$rejectedWrites;return ['status'=>400,'body'=>json_encode(['Code'=>'CloudGtm.Address.HealthJudgementInvalid','Message'=>'params error.','RequestId'=>'request-localized'])];}return $originalTransport($method,$url,$headers,$body);};
+ try{$gtm->apply($account,$failed['ticket']);throw new LogicException('Cloud error not returned');}catch(\CloudDesk\GtmRequestError $e){verifyGtm(str_contains($e->getMessage(),'健康判定条件') && !str_contains($e->getMessage(),'params error'),'Primary GTM error must be localized');verifyGtm($e->details['code']==='CloudGtm.Address.HealthJudgementInvalid' && $e->details['request_id']==='request-localized' && $e->details['http_status']===400 && str_contains($e->details['original_message'],'params error'),'Provider diagnosis must be preserved');}
+ verifyGtm($rejectedWrites===1,'HTTP parameter rejection must never replay a mutation');Http::$transport=$originalTransport;
+ $unknown=Gtm::requestError('UpdateCloudGtmAddress',new \CloudDesk\CloudResponseError('params error.','InvalidParameter','request-unknown',400));verifyGtm(str_contains($unknown->getMessage(),'请求参数') && !str_contains($unknown->getMessage(),'健康判定条件'),'Unknown parameter errors must not invent a specific cause');
  echo "PASS: GTM topology, selectors, JSON RPC bindings, create/update/delete, references, stale edits, preview integrity, idempotency and verification\n";
 } finally {
  Http::$transport=null;

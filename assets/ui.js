@@ -81,6 +81,30 @@ export function toast(text, error = false) {
   document.querySelector("#toasts").append(node);
   setTimeout(() => node.remove(), 5000);
 }
+export function errorDetails(details) {
+  if (!details || typeof details !== "object") return "";
+  const fields = {
+    operation: "接口",
+    code: "错误码",
+    request_id: "请求编号",
+    http_status: "云端 HTTP 状态",
+    original_message: "原始错误",
+  };
+  return `<details class="help"><summary>技术详情（用于排查）</summary><dl>${Object.entries(
+    fields,
+  )
+    .filter(
+      ([key]) =>
+        details[key] !== undefined &&
+        details[key] !== null &&
+        details[key] !== "",
+    )
+    .map(
+      ([key, label]) =>
+        `<dt>${escape(label)}</dt><dd>${escape(details[key])}</dd>`,
+    )
+    .join("")}</dl></details>`;
+}
 export function modal(
   title,
   description,
@@ -100,7 +124,8 @@ export function modal(
       await onSubmit(new FormData(e.target), e.target);
       dialog.close();
     } catch (error) {
-      dialog.querySelector(".dialog-error").textContent = error.message;
+      dialog.querySelector(".dialog-error").innerHTML =
+        escape(error.message) + errorDetails(error.details);
     } finally {
       btn.disabled = false;
     }

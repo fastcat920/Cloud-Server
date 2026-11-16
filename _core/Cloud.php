@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace CloudDesk;
 
+final class CloudResponseError extends \RuntimeException
+{
+    public function __construct(string $message, public readonly string $providerCode='', public readonly string $requestId='', public readonly int $httpStatus=200) { parent::__construct($message); }
+}
 final class Http
 {
     public static $transport = null;
@@ -64,7 +68,7 @@ final class Http
             throw new \RuntimeException('云服务返回格式错误（HTTP '.$response['status'].'）');
         }
         if ($response['status'] < 200 || $response['status'] >= 300) {
-            throw new \RuntimeException((string)($data['Message'] ?? $data['message'] ?? $data['errors'][0]['message'] ?? '云服务请求失败').'（HTTP '.$response['status'].'）');
+            throw new CloudResponseError((string)($data['Message'] ?? $data['message'] ?? $data['errors'][0]['message'] ?? '云服务请求失败').'（HTTP '.$response['status'].'）',(string)($data['Code'] ?? $data['code'] ?? $data['errors'][0]['code'] ?? ''),(string)($data['RequestId'] ?? $data['requestId'] ?? ''),$response['status']);
         }
         return $data;
     }
@@ -116,10 +120,10 @@ final class Cloud
             $encoded = http_build_query($flat, '', '&', PHP_QUERY_RFC3986);
             $data = $method === 'POST' ? Http::json('POST', 'https://'.$host.'/', ['Content-Type'=>'application/x-www-form-urlencoded'], $encoded, $timeout, $reuse) : Http::json('GET', 'https://'.$host.'/?'.$encoded, timeout:$timeout,reuse:$reuse);
             if (isset($data['Code']) && !in_array((string)$data['Code'], ['200','Success'], true)) {
-                throw new \RuntimeException($data['Code'].'：'.($data['Message'] ?? '请求失败'));
+                throw new CloudResponseError($data['Code'].'：'.($data['Message'] ?? '请求失败'),(string)$data['Code'],(string)($data['RequestId'] ?? ''),200);
             }
             if (($data['Success'] ?? true) === false) {
-                throw new \RuntimeException($data['Message'] ?? '请求失败');
+                throw new CloudResponseError($data['Message'] ?? '请求失败',(string)($data['Code'] ?? ''),(string)($data['RequestId'] ?? ''),200);
             }
             return $data;
         }
