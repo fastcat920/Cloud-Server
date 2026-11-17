@@ -1831,7 +1831,16 @@ dialog::backdrop {
   top: calc(100% + 17px);
 }
 .gtm-edge-incoming {
-  top: 17px;
+  top: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 240px;
+}
+.gtm-edge-source {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .gtm-graph .gtm-no-children::after {
   display: none;

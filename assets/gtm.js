@@ -12,6 +12,18 @@ import {
   toast,
   errorDetails,
 } from "./ui.js";
+export function gtmSourceLabel(row, lines = []) {
+  const values = Array.isArray(row.RequestSource) ? row.RequestSource : [];
+  return (
+    values
+      .map((code) => {
+        if (code === "default") return "默认";
+        const line = lines.find((item) => item.Code === code);
+        return line?.DisplayName || line?.Name || String(code);
+      })
+      .join("、") || "未配置"
+  );
+}
 export const kinds = {
   list: "接入域名",
   pools: "地址池",
@@ -1926,6 +1938,30 @@ export function createGtm({ api, ctx, render, queryResources }) {
       c.gtmDetail = detail;
       updateListedResource(detail);
       render();
+      const root = normalizeGtm(detail.resource);
+      if (
+        root.AddressPoolLbStrategy === "source_nearest" ||
+        root.AddressLbStrategy === "source_nearest" ||
+        root.AddressPools?.some(
+          (pool) => pool.AddressLbStrategy === "source_nearest",
+        )
+      ) {
+        options("ReplaceCloudGtmInstanceConfigAddressPool", "lines")
+          .then((result) => {
+            if (c.account !== account || c.gtmDetail !== detail) return;
+            for (const label of document.querySelectorAll(
+              "[data-gtm-edge-sources]",
+            )) {
+              label.textContent =
+                "来源：" +
+                gtmSourceLabel(
+                  { RequestSource: JSON.parse(label.dataset.gtmEdgeSources) },
+                  result.lines?.SystemLines?.SystemLine || [],
+                );
+            }
+          })
+          .catch(() => {});
+      }
     } finally {
       notice.remove();
     }
@@ -2090,8 +2126,12 @@ export function createGtm({ api, ctx, render, queryResources }) {
               row.SerialNumber !== undefined
             ? `顺序号：${row.SerialNumber}`
             : "";
-      return text
-        ? `<span class="gtm-edge-label gtm-edge-incoming">${e(text)}</span>`
+      const source =
+        strategy === "source_nearest"
+          ? `<span class="gtm-edge-source" data-gtm-edge-sources="${e(JSON.stringify(row.RequestSource || []))}">来源：${e(gtmSourceLabel(row, cachedOptions("lines")?.lines?.SystemLines?.SystemLine || []))}</span>`
+          : "";
+      return source || text
+        ? `<span class="gtm-edge-label gtm-edge-incoming">${source}${text ? `<span>${e(text)}</span>` : ""}</span>`
         : "";
     };
     const outgoing = (row, hasChildren) => {
