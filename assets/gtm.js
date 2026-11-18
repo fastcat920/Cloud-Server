@@ -1375,7 +1375,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
             .map(([operation, op]) =>
               button(
                 op.label,
-                "gtm.edit",
+                "gtm.confirmDelete",
                 { kind: op.kind, id: editor.resource[ids[op.kind]], operation },
                 "danger",
               ),
@@ -1398,11 +1398,12 @@ export function createGtm({ api, ctx, render, queryResources }) {
             : "")
         : "";
     box.innerHTML = `<form id="gtm-editor-form"><header class="gtm-inspector-head"><div><small>${e(kinds[editor.spec.kind])}</small><h3 id="gtm-editor-title">${e(gtmName(editor.resource))}</h3></div>${button("×", "gtm.inspector.close", {}, "icon-only")}</header><div class="gtm-inspector-body"><div class="dialog-error" role="alert"></div>${editorBody()}${extra ? `<section class="gtm-editor-section gtm-editor-actions" aria-label="资源操作"><div class="toolbar">${extra}</div></section>` : ""}</div><footer class="gtm-inspector-foot">${button("关闭", "gtm.inspector.close", {}, "text")}<button type="submit" class="button primary">提交</button></footer></form>`;
-    const onSubmit = async (_, form) => {
-      editor.values = collect(form);
-      const parameters = payload();
+    const onSubmit = async (_, form, override = null) => {
+      if (!override) editor.values = collect(form);
+      const parameters = override?.parameters || payload();
       let request = { operation: editor.operation, parameters };
-      if (!editor.spec.create && !editor.spec.delete) {
+      if (override?.operation) request.operation = override.operation;
+      if (!override?.operation && !editor.spec.create && !editor.spec.delete) {
         const steps = editor.operations
           .filter(([, op]) => !op.delete)
           .map(([operation, op]) => {
@@ -1446,7 +1447,8 @@ export function createGtm({ api, ctx, render, queryResources }) {
           ticket: preview.ticket,
         });
         const c = ctx();
-        delete c.gtmOptions;
+        c.gtmListPages?.clear();
+        if (c.gtmOptions) delete c.gtmOptions[`${savedEditor.account}:${result.kind}`];
         toast(
           result.partial
             ? "部分变更已提交，后续步骤已停止：" +
@@ -1472,7 +1474,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
           });
         const removedRoot =
           root &&
-          savedEditor.spec.delete &&
+          (savedEditor.spec.delete || override?.deleting) &&
           root.kind === savedEditor.spec.kind &&
           root.id === result.resource_id;
         if (root && !removedRoot) {
@@ -1490,11 +1492,20 @@ export function createGtm({ api, ctx, render, queryResources }) {
             };
             updateListedResource(c.gtmDetail);
             render();
+          } else if (savedEditor.spec.create && !result.partial && result.verification === "confirmed") {
+            render();
           } else await open(root.kind, root.id, true);
           restoreListPosition(savedEditor.returnTo);
         } else {
           c.gtmDetail = null;
-          await queryResources();
+          if (result.verified_page && c.tab === result.kind && Number(c.page || 1) === 1 && !result.partial) {
+            c.serial = (c.serial || 0) + 1;
+            c.items = result.verified_page.items;
+            c.total = result.verified_page.total;
+            c.raw = result.verified_page;
+            c.error = "";
+            render();
+          } else await queryResources();
           if (
             !result.partial &&
             result.verification === "confirmed" &&
@@ -1558,6 +1569,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
     delete box.dataset.loading;
     box.dataset.session = String(currentSession);
     const form = document.querySelector("#gtm-editor-form");
+    editor.confirmedSubmit = (override) => onSubmit(null, form, override);
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const btn = event.submitter;
@@ -2299,7 +2311,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
         await catalog();
         c.gtmHistory = await api("gtm.history", { account_id: c.account });
         render();
-      } else if (c.account) await queryResources();
+      } else if (c.account) await queryResources({ reuseGtmPage: true });
       else render();
     },
     "gtm.change": (d) => {
@@ -2352,6 +2364,19 @@ export function createGtm({ api, ctx, render, queryResources }) {
     "gtm.zoom.out": () => zoomCanvas(canvasZoom - 0.1),
     "gtm.zoom.reset": () => zoomCanvas(defaultCanvasZoom),
     "gtm.edit": (d) => edit(d.operation, d.kind, d.id),
+    "gtm.confirmDelete": (d) => {
+      const current = editor;
+      if (!current || current.resource[ids[d.kind]] !== d.id) return;
+      const spec = current.operations.find(([operation]) => operation === d.operation)?.[1];
+      if (!spec?.delete) return;
+      const parameters = Object.fromEntries(Object.keys(spec.fields)
+        .filter((key) => current.resource[key] !== undefined)
+        .map((key) => [key, current.resource[key]]));
+      modal("确认删除 GTM 资源", `将删除「${gtmName(current.resource)}」，其他未提交的编辑不会保存。`, "", async () => {
+        if (editor !== current) throw new Error("编辑对象已变化，请重新打开");
+        await current.confirmedSubmit({operation: d.operation, parameters, deleting: true});
+      }, "确认删除", true);
+    },
     "gtm.back": () => {
       document.querySelector("#dialog").close();
       drawEditor();
@@ -2414,11 +2439,18 @@ export function createGtm({ api, ctx, render, queryResources }) {
       drawEditor();
     },
     "gtm.row.remove": (d) => {
-      editor.values = collect(document.querySelector("#gtm-editor-form"));
-      let list = editor.values;
-      for (const key of JSON.parse(d.path)) list = list[key];
-      list.splice(Number(d.index), 1);
-      drawEditor();
+      const current = editor;
+      const next = collect(document.querySelector("#gtm-editor-form"));
+      let items = next;
+      for (const key of JSON.parse(d.path)) items = items[key];
+      items.splice(Number(d.index), 1);
+      modal("确认移除当前项", current.spec.create ? "从当前新建草稿移除此项。" : "移除此项并提交当前表单，包括其他未保存的修改。关联资源本身不会被删除。", "", async () => {
+        if (editor !== current) throw new Error("编辑对象已变化，请重新打开");
+        if (current.spec.create) { current.values = next; drawEditor(); return; }
+        const parameters = structuredClone(next);
+        if (Object.hasOwn(current.spec.fields, "ExtendInfo")) parameters.ExtendInfo = JSON.stringify(parameters.ExtendInfo || {});
+        await current.confirmedSubmit({parameters});
+      }, "确认移除", true);
     },
   };
   return {

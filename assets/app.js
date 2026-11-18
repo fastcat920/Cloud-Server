@@ -801,7 +801,7 @@ function settingsView() {
     )}${panel("运行环境", `<div class="panel-body"><p>原生 PHP ${e(boot.environment.php)} · 无数据库 · 无 Composer · 无前端构建</p>${boot.environment.missing.length ? `<div class="notice warn">请启用：${e(boot.environment.missing.join("、"))}</div>` : badge("运行环境就绪", "good")}<div class="section-label">更新项目</div><code>git pull --ff-only origin main</code><p style="margin-top:18px">就在当前网站目录执行，不套子目录。更新前请先从设置下载备份；_core/data 不会被 Git 覆盖。</p></div>`)}</div>`
   );
 }
-async function queryResources() {
+async function queryResources({ reuseGtmPage = false } = {}) {
   const page = route,
     c = ctx(),
     serial = (c.serial || 0) + 1;
@@ -898,11 +898,18 @@ async function queryResources() {
         render();
         return;
       }
-      result = await api(`gtm.${c.tab}`, {
+      const key = JSON.stringify([c.account, c.tab, c.page]);
+      const pages = c.gtmListPages ??= new Map();
+      const cached = pages.get(key);
+      result = reuseGtmPage && cached && Date.now() - cached.time < 15000 ? cached.result : await api(`gtm.${c.tab}`, {
         account_id: c.account,
         page: c.page,
       });
       if (c.serial !== serial) return;
+      if (result !== cached?.result) {
+        pages.set(key, { result, time: Date.now() });
+        if (pages.size > 24) pages.delete(pages.keys().next().value);
+      }
       c.raw = result;
       c.items = result.items;
       c.total = result.total;

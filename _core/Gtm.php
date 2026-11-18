@@ -410,10 +410,20 @@ final class Gtm
                     try { $result['resource']=$this->detail($account,$kind,$id,$params['InstanceId'] ?? $ticket['before']['InstanceId'] ?? '')['resource'];$result['token']=self::fingerprint($result['resource']);$result['verification']=$this->matches($operation,$params,$result['resource'])?'confirmed':'pending'; }
                     catch (\Throwable) { $result['verification']='unavailable'; }
                 } elseif ($spec['delete']) {
-                    try { $remaining=$this->all($account,$kind);$result['verification']=array_filter($remaining,fn ($row)=>($row[$idField] ?? null)===$id)?'pending':'confirmed'; }
+                    try {
+                        $first=$this->listing($account,$kind);
+                        $pageData=$first;$seen=count($first['items']);$page=1;
+                        while (!array_filter($pageData['items'],fn ($row)=>($row[$idField] ?? null)===$id)) {
+                            if ($seen >= $first['total']) { $result['verification']='confirmed';break; }
+                            if (!$pageData['items'] || $page>=50) break;
+                            $pageData=$this->listing($account,$kind,++$page);$seen+=count($pageData['items']);
+                        }
+                        $verifiedPage=$first;
+                    }
                     catch (\Throwable) { $result['verification']='unavailable'; }
                 }
                 $change['status']='success';$change['result']=$result;$this->record($change);
+                if (isset($verifiedPage)) $result['verified_page']=$verifiedPage;
                 return $result;
             } catch (\Throwable $error) {
                 $change['status']='failed';$change['error']=$error instanceof \RuntimeException?$error->getMessage():'GTM 操作失败';if ($error instanceof GtmRequestError) {
