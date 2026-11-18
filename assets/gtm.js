@@ -2221,6 +2221,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
     if (c.gtmDetail) return tabs + topology(c.gtmDetail);
     return (
       tabs +
+      (c.gtmListLoading ? `<p class="help" role="status">${c.items.length ? "正在更新列表…" : "正在加载列表…"}</p>` : "") +
       `<div class="notice">GTM 3.0 · 地址池、地址、探测模板为账号级共享资源。先选择账号并查询，再打开资源进行可视化配置。</div>` +
       panel(
         kinds[tab],

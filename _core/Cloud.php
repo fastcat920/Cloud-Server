@@ -11,8 +11,10 @@ final class CloudResponseError extends \RuntimeException
 final class Http
 {
     public static $transport = null;
+    public static array $lastTiming = [];
     public static function request(string $method, string $url, array $headers = [], string $body = '', int $limit = 33554432, int $timeout = 60, bool $reuse = false): array
     {
+        self::$lastTiming = [];
         if (self::$transport) {
             return (self::$transport)($method, $url, $headers, $body);
         }
@@ -46,6 +48,18 @@ final class Http
         $ok = curl_exec($handle);
         $status = (int)curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
         $error = curl_errno($handle);
+        if ($reuse) {
+            $info = curl_getinfo($handle);
+            $tls = defined('CURLINFO_APPCONNECT_TIME_T') ? (int)curl_getinfo($handle, CURLINFO_APPCONNECT_TIME_T) / 1000 : 0;
+            self::$lastTiming = [
+                'dns'=>(float)($info['namelookup_time'] ?? 0)*1000,
+                'tcp'=>(float)($info['connect_time'] ?? 0)*1000,
+                'tls'=>$tls,
+                'first_byte'=>(float)($info['starttransfer_time'] ?? 0)*1000,
+                'http'=>$status,
+                'curl'=>$error,
+            ];
+        }
         if (!$reuse || $ok===false || $error || $tooLarge) { if ($reuse) unset($handles[$origin]);curl_close($handle); }
         if ($tooLarge) {
             throw new \RuntimeException('文件超过当前 32 MB 下载上限，请使用云厂商工具下载');

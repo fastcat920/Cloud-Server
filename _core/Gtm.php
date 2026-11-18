@@ -47,11 +47,12 @@ final class Gtm
         for($attempt=0;$attempt<($read?2:1);$attempt++) {
             try {
                 $started=hrtime(true);++$this->cloudCalls;
+                Http::$lastTiming=[];
                 try { return $this->cloud->rpc($account,$operation,['AcceptLanguage'=>'zh-CN']+$params,service:'alidns',method:$read?'GET':'POST',timeout:$read?15:60,reuse:true,queryPost:true); }
                 finally {
                     $duration=(hrtime(true)-$started)/1000000;
                     $this->cloudMs+=$duration;
-                    if (count($this->cloudTimings)<20) $this->cloudTimings[]=[$operation,$duration,$attempt+1];
+                    if (count($this->cloudTimings)<20) $this->cloudTimings[]=[$operation,$duration,$attempt+1,Http::$lastTiming];
                 }
             } catch (\RuntimeException $error) {
                 $transient=$error instanceof CloudResponseError ? in_array($error->httpStatus,[502,503,504],true) : preg_match('/[（(]28[）)]|HTTP 50[234]/',$error->getMessage())===1;

@@ -670,8 +670,13 @@ final class Api
         } finally {
             $metrics=$gtm->metrics();
             $timing=sprintf('gtm;dur=%.2f, cloud;dur=%.2f;desc="%d calls"',(hrtime(true)-$started)/1000000,$metrics['cloud_ms'],$metrics['cloud_calls']);
-            foreach ($metrics['cloud_timings'] as $index=>[$operation,$duration,$attempt]) {
-                $timing.=sprintf(', rpc%d;dur=%.2f;desc="%s attempt %d"',$index+1,$duration,$operation,$attempt);
+            foreach ($metrics['cloud_timings'] as $index=>[$operation,$duration,$attempt,$connection]) {
+                $description=sprintf('%s attempt %d',$operation,$attempt);
+                if ($connection) {
+                    $description.=sprintf(' | elapsed ms: DNS %.1f, TCP %.1f, TLS %.1f, first byte %.1f | HTTP %d cURL %d',
+                        $connection['dns'],$connection['tcp'],$connection['tls'],$connection['first_byte'],$connection['http'],$connection['curl']);
+                }
+                $timing.=sprintf(', rpc%d;dur=%.2f;desc="%s"',$index+1,$duration,$description);
             }
             header('Server-Timing: '.$timing);
         }

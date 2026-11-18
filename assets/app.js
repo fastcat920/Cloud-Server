@@ -807,6 +807,8 @@ async function queryResources({ reuseGtmPage = false } = {}) {
     serial = (c.serial || 0) + 1;
   c.serial = serial;
   c.error = "";
+  c.gtmListLoading = false;
+  let shownGtmCache = false;
   try {
     let result;
     if (
@@ -901,10 +903,22 @@ async function queryResources({ reuseGtmPage = false } = {}) {
       const key = JSON.stringify([c.account, c.tab, c.page]);
       const pages = c.gtmListPages ??= new Map();
       const cached = pages.get(key);
-      result = reuseGtmPage && cached && Date.now() - cached.time < 15000 ? cached.result : await api(`gtm.${c.tab}`, {
+      if (reuseGtmPage) {
+        shownGtmCache = !!cached;
+        c.raw = cached?.result ?? null;
+        c.items = cached?.result.items ?? [];
+        c.total = cached?.result.total ?? 0;
+        if (cached && Date.now() - cached.time < 15000) {
+          render();
+          return;
+        }
+        c.gtmListLoading = true;
+        render();
+      }
+      result = await api(`gtm.${c.tab}`, {
         account_id: c.account,
         page: c.page,
-      });
+      }, { background: reuseGtmPage });
       if (c.serial !== serial) return;
       if (result !== cached?.result) {
         pages.set(key, { result, time: Date.now() });
@@ -913,13 +927,15 @@ async function queryResources({ reuseGtmPage = false } = {}) {
       c.raw = result;
       c.items = result.items;
       c.total = result.total;
-      c.gtmDetail = null;
+      if (!reuseGtmPage) c.gtmDetail = null;
     }
   } catch (error) {
     if (c.serial !== serial) return;
-    c.items = [];
+    if (!shownGtmCache) c.items = [];
     c.error = error.message;
   }
+  c.gtmListLoading = false;
+  if (reuseGtmPage && (c.gtmDetail || document.querySelector("#gtm-inspector, #gtm-drawer"))) return;
   if (route === page) render();
 }
 function configContent(form) {
