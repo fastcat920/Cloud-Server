@@ -2243,7 +2243,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
               ) +
               "</span>",
             `<div class="toolbar">${stateBadge(row)}</div>`,
-            openButton(tab, row),
+            openButton(tab, row) + button("删除", "gtm.listDelete", { kind: tab, id: row[ids[tab]] }, "text danger"),
           ]),
         ),
         button(
@@ -2364,6 +2364,28 @@ export function createGtm({ api, ctx, render, queryResources }) {
     "gtm.zoom.out": () => zoomCanvas(canvasZoom - 0.1),
     "gtm.zoom.reset": () => zoomCanvas(defaultCanvasZoom),
     "gtm.edit": (d) => edit(d.operation, d.kind, d.id),
+    "gtm.listDelete": (d) => {
+      const current = ctx();
+      const account = current.account;
+      const row = current.items.find((item) => item[ids[d.kind]] === d.id);
+      if (!row) return;
+      modal("确认删除 GTM 资源", `将删除「${gtmName(row)}」。仍被引用的资源需要先解除关联。`, "", async () => {
+        if (ctx() !== current || current.account !== account) throw new Error("账号已变化，请重新操作");
+        const operations = await catalog();
+        const operation = Object.keys(operations).find((key) => operations[key].kind === d.kind && operations[key].delete);
+        if (!operation) throw new Error("此资源不支持删除");
+        const detail = await resourceDetail(d.kind, d.id, { fresh: true, instance: row.InstanceId });
+        const parameters = Object.fromEntries(Object.keys(operations[operation].fields).filter((key) => detail.resource[key] !== undefined).map((key) => [key, detail.resource[key]]));
+        const preview = await api("gtm.preview", { account_id: account, operation, parameters, expected_token: detail.token });
+        const result = await api("gtm.action", { account_id: account, ticket: preview.ticket });
+        detailCache.clear();
+        current.gtmListPages?.clear();
+        delete current.gtmOptions;
+        if (current.account !== account) return;
+        toast(result.verification === "confirmed" ? "资源已删除" : "删除请求已提交，请刷新核对");
+        await queryResources();
+      }, "确认删除", true);
+    },
     "gtm.confirmDelete": (d) => {
       const current = editor;
       if (!current || current.resource[ids[d.kind]] !== d.id) return;
