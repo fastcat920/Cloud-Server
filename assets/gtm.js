@@ -1428,8 +1428,10 @@ export function createGtm({ api, ctx, render, queryResources }) {
         request = steps.length === 1 ? steps[0] : { steps };
       }
       const savedEditor = editor;
+      const submitButton = form.querySelector('button[type="submit"]');
       let preview;
       try {
+        if (savedEditor.spec.create) submitButton.textContent = "正在校验…";
         preview = await api("gtm.preview", {
           account_id: savedEditor.account,
           expected_token: savedEditor.token,
@@ -1441,6 +1443,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
       }
       if (editor?.session !== currentSession) return;
       const perform = async () => {
+        if (savedEditor.spec.create) submitButton.textContent = "正在创建并核验…";
         detailCache.clear();
         const result = await api("gtm.action", {
           account_id: savedEditor.account,
@@ -1505,6 +1508,28 @@ export function createGtm({ api, ctx, render, queryResources }) {
             c.raw = result.verified_page;
             c.error = "";
             render();
+          } else if (
+            savedEditor.spec.create &&
+            result.verification === "confirmed" &&
+            result.resource_id &&
+            result.resource &&
+            c.account === savedEditor.account &&
+            c.tab === result.kind
+          ) {
+            const idField = ids[result.kind];
+            const alreadyListed = c.items.some((row) => row[idField] === result.resource_id);
+            const firstPage = Number(c.page || 1) === 1;
+            c.page = 1;
+            const items = [
+              result.resource,
+              ...(firstPage ? c.items.filter((row) => row[idField] !== result.resource_id) : []),
+            ].slice(0, 100);
+            const key = JSON.stringify([c.account, c.tab, c.page]);
+            (c.gtmListPages ??= new Map()).set(key, {
+              result: { items, total: Number(c.total || 0) + Number(!alreadyListed), page: 1 },
+              time: Date.now(),
+            });
+            void queryResources({ reuseGtmPage: true, refreshGtmPage: true });
           } else await queryResources();
           if (
             !result.partial &&
@@ -1585,6 +1610,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
       } finally {
         submittingEditor.submitting = false;
         btn.disabled = false;
+        if (submittingEditor.spec.create) btn.textContent = "提交";
       }
     });
     drawNodes();
@@ -2247,13 +2273,13 @@ export function createGtm({ api, ctx, render, queryResources }) {
             openButton(tab, row) + button("删除", "gtm.listDelete", { kind: tab, id: row[ids[tab]] }, "text danger"),
           ]),
         ),
-        button(
+        c.account ? button(
           "创建" + kinds[tab],
           "gtm.create",
           { kind: tab },
           "primary",
           "plus",
-        ),
+        ) : `<button type="button" class="button primary" disabled title="请先选择云账号">创建${e(kinds[tab])}</button>`,
       ) +
       inspectorShell()
     );
@@ -2349,6 +2375,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
       render();
     },
     "gtm.create": async (d) => {
+      if (!ctx().account) throw new Error("请先选择云账号");
       const op = Object.entries(await catalog()).find(
         ([, op]) => op.kind === d.kind && op.create,
       )?.[0];
