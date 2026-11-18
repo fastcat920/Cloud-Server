@@ -2374,16 +2374,23 @@ export function createGtm({ api, ctx, render, queryResources }) {
         const operations = await catalog();
         const operation = Object.keys(operations).find((key) => operations[key].kind === d.kind && operations[key].delete);
         if (!operation) throw new Error("此资源不支持删除");
-        const detail = await resourceDetail(d.kind, d.id, { fresh: true, instance: row.InstanceId });
-        const parameters = Object.fromEntries(Object.keys(operations[operation].fields).filter((key) => detail.resource[key] !== undefined).map((key) => [key, detail.resource[key]]));
-        const preview = await api("gtm.preview", { account_id: account, operation, parameters, expected_token: detail.token });
+        const parameters = { [ids[d.kind]]: d.id };
+        if (d.kind === "list" && row.InstanceId) parameters.InstanceId = row.InstanceId;
+        const preview = await api("gtm.preview", { account_id: account, operation, parameters, list_delete: true });
         const result = await api("gtm.action", { account_id: account, ticket: preview.ticket });
         detailCache.clear();
         current.gtmListPages?.clear();
-        delete current.gtmOptions;
-        if (current.account !== account) return;
+        if (current.gtmOptions) delete current.gtmOptions[`${account}:${result.kind}`];
+        if (ctx() !== current || current.account !== account || current.tab !== d.kind) return;
         toast(result.verification === "confirmed" ? "资源已删除" : "删除请求已提交，请刷新核对");
-        await queryResources();
+        if (result.verified_page && Number(current.page || 1) === 1) {
+          current.serial = (current.serial || 0) + 1;
+          current.items = result.verified_page.items;
+          current.total = result.verified_page.total;
+          current.raw = result.verified_page;
+          current.error = "";
+          render();
+        } else await queryResources();
       }, "确认删除", true);
     },
     "gtm.confirmDelete": (d) => {

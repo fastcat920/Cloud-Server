@@ -659,6 +659,7 @@ final class Api
                 }
                 $parameters=$this->input['parameters'] ?? null;
                 if (!is_array($parameters)) throw new ApiError('GTM 参数无效');
+                if (($this->input['list_delete'] ?? false)===true) return $gtm->previewListDelete($account,$this->text('operation',100),$parameters);
                 return $gtm->preview($account,$this->text('operation',100),$parameters,$this->text('expected_token',100,false) ?: null);
             }
             $kind=$this->text('kind',30,false) ?: 'list';
@@ -668,7 +669,11 @@ final class Api
             return $gtm->listing($account,$kind,max(1,(int)($this->input['page'] ?? 1)));
         } finally {
             $metrics=$gtm->metrics();
-            header(sprintf('Server-Timing: gtm;dur=%.2f, cloud;dur=%.2f;desc="%d calls"',(hrtime(true)-$started)/1000000,$metrics['cloud_ms'],$metrics['cloud_calls']));
+            $timing=sprintf('gtm;dur=%.2f, cloud;dur=%.2f;desc="%d calls"',(hrtime(true)-$started)/1000000,$metrics['cloud_ms'],$metrics['cloud_calls']);
+            foreach ($metrics['cloud_timings'] as $index=>[$operation,$duration,$attempt]) {
+                $timing.=sprintf(', rpc%d;dur=%.2f;desc="%s attempt %d"',$index+1,$duration,$operation,$attempt);
+            }
+            header('Server-Timing: '.$timing);
         }
     }
     private function saveVersion(): int

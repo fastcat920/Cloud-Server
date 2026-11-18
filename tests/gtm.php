@@ -40,7 +40,11 @@ try {
  try{$gtm->preview($account,'CreateCloudGtmAddress',['Name'=>'bad','Type'=>'IPv4','Address'=>'not-an-ip','EnableStatus'=>'disable','AvailableMode'=>'auto','HealthJudgement'=>'any_ok'],null);throw new LogicException('Invalid IP accepted');}catch(ApiError){}
  $p=$gtm->preview($account,'CreateCloudGtmAddressPool',['AddressPoolName'=>'New pool','AddressPoolType'=>'IPv6','EnableStatus'=>'disable','HealthJudgement'=>'any_ok'],null);$created=$gtm->apply($account,$p['ticket']);
  verifyGtm($created['resource_id']!=='' && $created['verification']==='confirmed','Create resource');
- $d=$gtm->detail($account,'pools',$created['resource_id']);$delete=$gtm->preview($account,'DeleteCloudGtmAddressPool',['AddressPoolId'=>$created['resource_id']],$d['token']);$gtm->apply($account,$delete['ticket']);
+ $beforeCalls=$gtm->metrics()['cloud_calls'];
+ $delete=$gtm->previewListDelete($account,'DeleteCloudGtmAddressPool',['AddressPoolId'=>$created['resource_id']]);
+ verifyGtm($gtm->metrics()['cloud_calls']-$beforeCalls===2,'List delete preview only reads detail and references once');
+ $deleted=$gtm->apply($account,$delete['ticket']);
+ verifyGtm($deleted['verification']==='confirmed' && isset($deleted['verified_page']['items']),'List delete returns the verified page for reuse');
  $d=$gtm->detail($account,'addresses','addr-1');$p=$gtm->preview($account,'UpdateCloudGtmAddressRemark',['AddressId'=>'addr-1','Remark'=>'next'],$d['token']);
  $raw=json_decode(substr(file_get_contents($directory.'/gtm-fixture.php'),strlen(Store::GUARD)),true);$raw['addresses']['addr-1']['Remark']='external edit';file_put_contents($directory.'/gtm-fixture.php',Store::GUARD.json_encode($raw));
  try{$gtm->apply($account,$p['ticket']);throw new LogicException('External edit overwritten');}catch(ApiError $e){verifyGtm($e->status===409,'Apply recheck');}

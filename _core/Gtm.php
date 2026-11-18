@@ -20,7 +20,8 @@ final class Gtm
     private ?array $previewCache = null;
     private float $cloudMs = 0;
     private int $cloudCalls = 0;
-    public function metrics(): array { return ['cloud_ms'=>$this->cloudMs,'cloud_calls'=>$this->cloudCalls]; }
+    private array $cloudTimings = [];
+    public function metrics(): array { return ['cloud_ms'=>$this->cloudMs,'cloud_calls'=>$this->cloudCalls,'cloud_timings'=>$this->cloudTimings]; }
     private function previewReads(callable $callback): array
     {
         if ($this->previewCache!==null) return $callback();
@@ -47,7 +48,11 @@ final class Gtm
             try {
                 $started=hrtime(true);++$this->cloudCalls;
                 try { return $this->cloud->rpc($account,$operation,['AcceptLanguage'=>'zh-CN']+$params,service:'alidns',method:$read?'GET':'POST',timeout:$read?15:60,reuse:true,queryPost:true); }
-                finally { $this->cloudMs+=(hrtime(true)-$started)/1000000; }
+                finally {
+                    $duration=(hrtime(true)-$started)/1000000;
+                    $this->cloudMs+=$duration;
+                    if (count($this->cloudTimings)<20) $this->cloudTimings[]=[$operation,$duration,$attempt+1];
+                }
             } catch (\RuntimeException $error) {
                 $transient=$error instanceof CloudResponseError ? in_array($error->httpStatus,[502,503,504],true) : preg_match('/[（(]28[）)]|HTTP 50[234]/',$error->getMessage())===1;
                 if ($read && $attempt===0 && $transient) continue;
@@ -218,6 +223,18 @@ final class Gtm
     public function preview(array $account,string $operation,array $params,?string $expected): array
     {
         return $this->previewReads(fn ()=>$this->previewOne($account,$operation,$params,$expected));
+    }
+    public function previewListDelete(array $account,string $operation,array $params): array
+    {
+        $spec=self::catalog()[$operation] ?? null;
+        if (empty($spec['delete'])) throw new ApiError('此操作仅支持删除 GTM 资源');
+        self::validateFields($params,$spec['fields']);
+        $kind=$spec['kind'];
+        $id=$params[self::KINDS[$kind][4]];
+        return $this->previewReads(function () use ($account,$operation,$params,$kind,$id) {
+            $detail=$this->detail($account,$kind,$id,$params['InstanceId'] ?? '');
+            return $this->previewOne($account,$operation,$params,$detail['token']);
+        });
     }
     private function previewOne(array $account,string $operation,array $params,?string $expected): array
     {
