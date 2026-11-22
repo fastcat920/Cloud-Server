@@ -2024,7 +2024,7 @@ Object.assign(actions, {
   },
   "config.savepush": async () => {
     const id = await saveCurrentConfig();
-    actions["config.publish"]({ id });
+    await actions["config.publish"]({ id });
   },
   "config.rollback": (d) =>
     confirm(
