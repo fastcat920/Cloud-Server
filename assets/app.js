@@ -411,7 +411,7 @@ function accountsView() {
       : `<div class="account-grid">${state.accounts
           .map((a) => {
             const bill = a.billing;
-            return `<article class="account-card"><div class="account-top"><div class="account-name">${accountLogo(a)}<div><h3>${e(a.name)}</h3><span class="help">${e(providers[a.provider])} · ${a.site === "international" ? "国际站" : "国内站"}</span></div></div>${badge(a.enabled ? "已启用" : "已停用", a.enabled ? "good" : "")}</div><div class="balance">${bill ? e(new Intl.NumberFormat("zh-CN", { style: "currency", currency: bill.currency }).format(bill.balance)) : "—"}</div><div class="balance-label">${a.provider === "cloudflare" ? "使用 API Token 访问授权域名" : "可用余额 · " + (bill ? date(bill.synced_at) : "尚未查询")}</div>${a.billing_error ? `<div class="notice warn">账单：${e(a.billing_error)}。不影响其他已授权功能。</div>` : ""}<div class="account-meta"><div><label>本月消费</label>${bill ? e(bill.current.toFixed(2)) : "—"}</div><div><label>上月消费</label>${bill ? e(bill.previous.toFixed(2)) : "—"}</div><div><label>配置引用</label>${a.references.length}</div></div><div class="account-actions">${a.provider === "cloudflare" ? button("管理解析", "account.open", { id: a.id, route: "cloudflare" }, "text") : button("查看资源", "account.open", { id: a.id, route: "servers" }, "text")}${a.provider === "cloudflare" ? button("验证", "account.test", { id: a.id }, "text") : button("余额", "account.billing", { id: a.id }, "text")}${button("编辑", "account.edit", { id: a.id }, "text")}${button("删除", "account.delete", { id: a.id }, "text")}</div></article>`;
+            return `<article class="account-card"><div class="account-top"><div class="account-name">${accountLogo(a)}<div><h3>${e(a.name)}</h3><span class="help">${e(providers[a.provider])} · ${a.site === "international" ? "国际站" : "国内站"}</span></div></div>${badge(a.enabled ? "已启用" : "已停用", a.enabled ? "good" : "")}</div><div class="balance">${bill ? e(new Intl.NumberFormat("zh-CN", { style: "currency", currency: bill.currency }).format(bill.balance)) : "—"}</div><div class="balance-label">${a.provider === "cloudflare" ? "使用 API Token 访问授权域名" : "可用余额 · " + (bill ? date(bill.synced_at) : "尚未查询")}</div>${a.billing_error ? `<div class="notice warn">账单：${e(a.billing_error)}。不影响其他已授权功能。</div>` : ""}<div class="account-meta"><div><label>本月消费</label>${bill ? e(bill.current.toFixed(2)) : "—"}</div><div><label>上月消费</label>${bill ? e(bill.previous.toFixed(2)) : "—"}</div><div><label>配置引用</label>${a.references.length}</div></div><div class="account-actions">${a.provider === "cloudflare" ? button("管理解析", "account.open", { id: a.id, route: "cloudflare" }, "text") : button("查看资源", "account.open", { id: a.id, route: "servers" }, "text")}${a.provider === "cloudflare" ? button("验证", "account.test", { id: a.id }, "text") : button("余额", "account.billing", { id: a.id }, "text")}${button("编辑", "account.edit", { id: a.id }, "text")}${button("删除", "account.delete", { id: a.id }, "text danger")}</div></article>`;
           })
           .join("")}</div>`)
   );
@@ -537,7 +537,7 @@ function storageView() {
               e(r.modified),
               r.directory
                 ? ""
-                : `<div class="toolbar">${button("下载", "object.download", { key: r.key }, "text")}${button("删除", "object.delete", { key: r.key }, "text")}</div>`,
+                : `<div class="toolbar">${button("下载", "object.download", { key: r.key }, "text")}${button("删除", "object.delete", { key: r.key }, "text danger")}</div>`,
             ]),
           )}<div class="pagination">${c.history.length ? button("上一页", "object.prev") : ""}${c.next ? button("下一页", "object.next") : ""}<span>每页最多 100 项</span></div>`,
         ))
@@ -561,7 +561,7 @@ function dnsView() {
               badge(r.Type),
               `<span class="mono">${e(r.Value)}</span>`,
               e(r.TTL),
-              `<div class="toolbar">${button("编辑", "dns.edit", { index: i }, "text")}${button("删除", "dns.delete", { index: i }, "text")}</div>`,
+              `<div class="toolbar">${button("编辑", "dns.edit", { index: i }, "text")}${button("删除", "dns.delete", { index: i }, "text danger")}</div>`,
             ]),
           )
         : table(
@@ -604,7 +604,7 @@ function cfView() {
               `<span class="mono">${e(r.content || JSON.stringify(r.data || {}))}</span>`,
               badge(r.proxied ? "已开启" : "DNS only", r.proxied ? "warn" : ""),
               r.ttl === 1 ? "自动" : e(r.ttl),
-              `<div class="toolbar">${button("编辑", "cf.edit", { index: i }, "text")}${button("删除", "cf.delete", { index: i }, "text")}</div>`,
+              `<div class="toolbar">${button("编辑", "cf.edit", { index: i }, "text")}${button("删除", "cf.delete", { index: i }, "text danger")}</div>`,
             ]),
           )
         : table(
@@ -720,7 +720,7 @@ function templatesView() {
         e(t.name),
         Object.keys(t.schema.properties || {}).length,
         `${t.builtin ? badge("系统内置") + " · " : ""}${state.plans.filter((p) => p.template_id === t.id).length} 个方案 · ${state.versions.filter((v) => v.template_id === t.id).length} 个修订`,
-        `<div class="toolbar">${button("查看 / 派生新模板", "template.edit", { id: t.id }, "text")}${t.builtin ? "" : button("删除", "template.delete", { id: t.id }, "text")}</div>`,
+        `<div class="toolbar">${button("查看 / 派生新模板", "template.edit", { id: t.id }, "text")}${t.builtin ? "" : button("删除", "template.delete", { id: t.id }, "text danger")}</div>`,
       ]),
     ),
     button("新增结构模板", "template.edit", {}, "primary", "plus"),
@@ -736,7 +736,7 @@ function targetsView() {
         e(account(t.account_id)?.name || "账号已删除"),
         `<span class="mono">${e(t.bucket + "/" + t.key)}</span><span class="secondary">${e(t.region)}</span>`,
         `<a href="${e(t.url)}" target="_blank" rel="noreferrer">打开链接 ↗</a>`,
-        `<div class="toolbar">${button("测试", "target.test", { id: t.id }, "text")}${button("编辑", "target.edit", { id: t.id }, "text")}${button("删除", "target.delete", { id: t.id }, "text")}</div>`,
+        `<div class="toolbar">${button("测试", "target.test", { id: t.id }, "text")}${button("编辑", "target.edit", { id: t.id }, "text")}${button("删除", "target.delete", { id: t.id }, "text danger")}</div>`,
       ]),
     ),
     button("添加目标", "target.edit", {}, "primary", "plus"),
@@ -1039,7 +1039,7 @@ function editDns(index, cf) {
     r = index !== undefined ? c.items[Number(index)] : null;
   const target = { account: c.account, domain: c.domain, zone: c.zone };
   const rootDomain = cf ? c.zoneName : c.domain;
-  const prefix = r ? (cf ? dnsPrefix(r.name, rootDomain) : r.RR) : "@";
+  const prefix = r ? (cf ? dnsPrefix(r.name, rootDomain) : r.RR) : "";
   const types = ["A", "AAAA", "CNAME", "TXT", "MX", "NS", "SRV", "CAA"];
   const ttlOptions = [
     ...new Set([

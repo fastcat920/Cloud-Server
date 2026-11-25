@@ -1579,6 +1579,7 @@ export function createGtm({ api, ctx, render, queryResources }) {
           "",
           perform,
           "删除",
+          true,
         );
       } else await perform();
     };

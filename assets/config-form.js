@@ -84,7 +84,7 @@ export function configFields(content, schema = {}, path = [], orders = {}) {
           (array ? `第 ${Number(key) + 1} 项` : key);
       if (!Object.hasOwn(content, key)) {
         missing.push(
-          `<div class="config-node ${levelClass}">${e(label)} ${button("添加参数", "tree.add", { path: JSON.stringify(path), key }, "text")}${button("删除", "tree.remove", { path: encoded }, "text")}${schema.required?.includes(key) ? '<small class="help">必填，保存前需添加</small>' : ""}</div>`,
+          `<div class="config-node ${levelClass}">${e(label)} ${button("添加参数", "tree.add", { path: JSON.stringify(path), key }, "text")}${button("删除", "tree.remove", { path: encoded }, "text danger")}${schema.required?.includes(key) ? '<small class="help">必填，保存前需添加</small>' : ""}</div>`,
         );
         return "";
       }
@@ -105,7 +105,7 @@ export function configFields(content, schema = {}, path = [], orders = {}) {
           "text",
         );
       const controls =
-        sorting + button("删除", "tree.remove", { path: encoded }, "text");
+        sorting + button("删除", "tree.remove", { path: encoded }, "text danger");
       const drag = `<span draggable="true" class="config-drag" data-drag-path="${e(encoded)}" title="拖动调整同组顺序" aria-label="拖动调整顺序">↕</span>`;
       const heading = `<span class="config-heading">${e(label)} <small>${e(key)}</small></span>`;
       const actions = `<span class="config-actions">${controls}${drag}</span>`;
