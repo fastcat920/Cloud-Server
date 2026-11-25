@@ -85,6 +85,7 @@ final class Security
 }
 final class Sessions implements \SessionHandlerInterface, \SessionUpdateTimestampHandlerInterface
 {
+    public const REMEMBER_LIFETIME = 7 * 86400;
     private string $dir;
     private $handle = null;
     public function __construct(string $directory)
@@ -154,7 +155,7 @@ final class Sessions implements \SessionHandlerInterface, \SessionUpdateTimestam
     }
     public function validateId(string $id): bool
     {
-        return is_file($this->path($id)) && filemtime($this->path($id)) > time() - 43200;
+        return is_file($this->path($id)) && filemtime($this->path($id)) > time() - self::REMEMBER_LIFETIME;
     }
     public function updateTimestamp(string $id, string $data): bool
     {

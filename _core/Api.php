@@ -114,9 +114,10 @@ final class Api
         $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
         session_set_save_handler(new Sessions($this->store->directory()), true);
         ini_set('session.use_strict_mode', '1');
-        ini_set('session.gc_maxlifetime', '43200');
+        ini_set('session.gc_maxlifetime', (string)Sessions::REMEMBER_LIFETIME);
         session_name('cloud_desk');
-        session_set_cookie_params(['lifetime' => 0,'path' => '/','secure' => $secure,'httponly' => true,'samesite' => 'Strict']);
+        $cookieOptions = ['path' => '/','secure' => $secure,'httponly' => true,'samesite' => 'Strict'];
+        session_set_cookie_params(['lifetime' => 0]+$cookieOptions);
         session_start();
         $_SESSION['csrf'] ??= bin2hex(random_bytes(32));
         $csrf = $_SESSION['csrf'];
@@ -178,7 +179,9 @@ final class Api
                     throw new ApiError('邮箱或密码错误', 401);
                 }session_regenerate_id(true);
                 $_SESSION['auth'] = $state['admin']['epoch'];
-                $_SESSION['expires'] = time() + 43200;
+                $remember = in_array($this->input['remember'] ?? null, [true, 'on'], true);
+                $_SESSION['expires'] = time() + ($remember ? Sessions::REMEMBER_LIFETIME : 43200);
+                if ($remember) setcookie(session_name(), session_id(), ['expires'=>$_SESSION['expires']]+$cookieOptions);
                 $this->respond(true);
             }
             if (!$authenticated) {
@@ -187,6 +190,7 @@ final class Api
             if ($action === 'logout') {
                 $_SESSION = [];
                 session_destroy();
+                setcookie(session_name(), '', ['expires'=>time()-3600]+$cookieOptions);
                 $this->respond(true);
             }
             session_write_close();
